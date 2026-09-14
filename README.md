@@ -12,7 +12,7 @@ The library requires SyntaxSkills login. This includes search, discovery, Markdo
 
 Open a lesson and expand **Share this lesson** to create a link. Anyone with that link can read only that article, including its Markdown version. Shared pages omit collection navigation, search, and related lessons. Creating another link replaces your previous link for that lesson; **Revoke my share link** disables it immediately. Each signed-in user manages their own links. Links follow the current article at its stable slug, without granting access to other lessons or revisions.
 
-SyntaxSkills cookies cannot cross from `syntaxskills.com` to `tianzezhao.com`. The auth service's `/api/notes-sso` endpoint bridges login with a 60-second, single-use PKCE grant and a fixed callback. Notes keeps the upstream credential in D1, issues an opaque host-only HttpOnly cookie, and revalidates the central session on protected requests. Share credentials are hashed in D1, grant no session, and work without the login service. Content responses use `no-store`, `no-referrer`, and `noindex` headers.
+SyntaxSkills cookies cannot cross from `syntaxskills.com` to `tianzezhao.com`. The auth service's `/api/notes-sso` endpoint bridges login with a 60-second, single-use PKCE grant and a fixed callback. Notes keeps the upstream credential in D1, issues an opaque host-only HttpOnly cookie, and revalidates the central session on protected requests. Share credentials are hashed in D1, grant no session, and work without the login service. Content responses use `no-store` and `noindex`; login and share routes also use `no-referrer`. Private pages use `same-origin` referrers so native forms retain their Origin header for CSRF checks.
 
 ## Automatic maintenance
 

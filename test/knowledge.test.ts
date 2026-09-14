@@ -159,6 +159,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
       const response = await request(path, { headers: signed })
       assert.equal(response.status, 200, path)
       assert.match(response.headers.get('cache-control')!, /no-store/)
+      assert.equal(response.headers.get('referrer-policy'), 'same-origin')
       assert.equal(response.headers.get('access-control-allow-origin'), null)
     }
     const sharePath = `/api/lessons/${sample.slug}/share`

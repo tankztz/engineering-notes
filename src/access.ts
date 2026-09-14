@@ -28,14 +28,15 @@ export function adminToken(request: Request, env: Env) {
 
 export const access = new Hono<AppEnv>()
 access.use('*', async (c, next) => {
+  const path = c.req.path
   c.header('Cache-Control', 'private, no-store')
-  c.header('Referrer-Policy', 'no-referrer')
+  // Native form POSTs need a same-origin referrer policy to preserve their Origin header.
+  c.header('Referrer-Policy', path.startsWith('/share/') || path.startsWith('/auth/') ? 'no-referrer' : 'same-origin')
   c.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
   const url = new URL(c.req.url)
   if (c.env.SITE_URL && url.origin !== c.env.SITE_URL && !['localhost', '127.0.0.1'].includes(url.hostname)) {
     return c.redirect(c.env.SITE_URL + url.pathname + url.search, 308)
   }
-  const path = c.req.path
   if (['/style.css', '/app.js', '/favicon.svg', '/robots.txt'].includes(path) || path.startsWith('/auth/') || path.startsWith('/share/') || path.startsWith('/api/admin/')) return next()
   if (adminToken(c.req.raw, c.env)) {
     c.set('isAdmin', true)
