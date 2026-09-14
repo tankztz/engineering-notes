@@ -8,7 +8,7 @@ The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Se
 
 ## Automatic maintenance
 
-A Cloudflare Worker checks connected public repositories hourly. It processes one commit per repository per run, oldest first, and uses Workers AI to extract up to three lessons. Existing topics keep their URL and previous document revisions. Commits without reusable knowledge can produce no articles. Failed extraction or indexing leaves the source cursor unchanged for retry; `/status` shows pending retries.
+A Cloudflare Worker checks connected public repositories hourly. It processes one commit per repository per run, oldest first, and uses Workers AI to extract up to three lessons. Semantic retrieval supplies the closest existing article. A separate model checks draft claims and citations against the patch and prior article; only approved drafts publish. Existing topics keep their URL and previous document revisions. Commits without reusable knowledge or supported drafts can produce no articles. Failed extraction, review, or indexing leaves the source cursor unchanged for retry; `/status` shows pending retries.
 
 Only explicitly registered public repositories are read. Visibility is checked on every sync and import, including after a repository becomes private. Patches are bounded and treated as untrusted evidence. Documents must pass the English-only schema and reference actual commits from the batch or the existing lesson. Generated explanations can still be mistaken: inspect the cited code and applicability before using them. Verification sections describe checks to perform, not test execution claims.
 
@@ -99,6 +99,7 @@ The language model does not run repository code or tests. Publication validates 
 - [llms.txt specification](https://llmstxt.org/)
 - [Workers AI BGE-M3 embeddings](https://developers.cloudflare.com/workers-ai/models/bge-m3/)
 - [Workers AI Qwen3 generation](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/)
+- [Workers AI GPT-OSS review](https://developers.cloudflare.com/workers-ai/models/gpt-oss-120b/)
 - [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
 
 After changing the embedding text or model, reindex current documents with authenticated `POST /api/admin/reindex` and a JSON body containing `slugs` (up to ten at a time). This rebuilds vectors without rewriting articles or revisions. Vectorize updates are eventually consistent; verify retrieval after the index catches up.

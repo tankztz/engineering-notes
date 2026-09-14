@@ -122,10 +122,12 @@ test('automatic sync updates a lesson and advances its cursor only after success
   let isPrivate = false
   t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(url.endsWith(sample.repo) ? { private: isPrivate } : url.includes('/compare/') ? { status: 'ahead', commits: [commit] } : commit))
   let fail = true
-  env.AI.run = (async (_model: string, input: { messages?: unknown; response_format?: { type: string; json_schema: { properties: { lessons: { maxItems: number } } } } }) => {
+  let approve = true
+  env.AI.run = (async (model: string, input: { messages?: unknown; response_format?: { type: string; json_schema: { properties: { lessons?: { maxItems: number } } } } }) => {
     if (input.messages) {
+      if (model === '@cf/openai/gpt-oss-120b') return { response: { approved: approve ? [generated.slug] : [] } }
       assert.equal(input.response_format?.type, 'json_schema')
-      assert.equal(input.response_format?.json_schema.properties.lessons.maxItems, 3)
+      assert.equal(input.response_format?.json_schema.properties.lessons?.maxItems, 3)
       if (fail) throw new Error('Temporary inference failure')
       return { response: { lessons: [generated] } }
     }
@@ -144,8 +146,15 @@ test('automatic sync updates a lesson and advances its cursor only after success
     assert.equal(sqlite.prepare('SELECT error FROM sources').get()!.error, null)
     assert.equal((await allLessons(env))[0].slug, sample.slug)
     assert.equal(sqlite.prepare('SELECT count(*) AS count FROM sync_runs').get()!.count, 1)
+    approve = false
+    commit.sha = 'c'.repeat(40)
+    generated.commits = [{ sha: commit.sha, note: 'Unsupported rewrite' }]
+    generated.summary = 'Unsupported rewrite'
+    const rejected = await syncSource(env, sample.repo)
+    assert.equal('lessons' in rejected ? rejected.lessons : -1, 0)
+    assert.equal((await allLessons(env))[0].summary, sample.summary)
     isPrivate = true
     await assert.rejects(syncSource(env, sample.repo), /no longer public/)
-    assert.equal(sqlite.prepare('SELECT cursor FROM sources').get()!.cursor, nextSha)
+    assert.equal(sqlite.prepare('SELECT cursor FROM sources').get()!.cursor, commit.sha)
   } finally { sqlite.close() }
 })
