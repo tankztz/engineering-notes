@@ -46,7 +46,7 @@ Explain symptoms, triggers, behavioral invariants, root causes, the final soluti
 Separate product preferences from general technical rules. Later fixes can supersede earlier approaches. Update the existing article for the same root cause, preserving its slug and explaining which attempts were replaced and why. Never present old behavior as the current recommendation. Label inferred causality and never claim you ran tests.
 During historical backfill, existing lessons may already include later fixes. Preserve their final behavior unless the supplied evidence demonstrates a subsequent change.
 Do not create articles for dependency bumps, formatting, or changes with no reusable lesson. Return at most three lessons; an empty array is valid.
-Every article must cite at least one exact 40-character SHA from this batch. Do not invent references, benchmarks, code, or user intent. Explain what each cited patch supports. A truncated patch is incomplete evidence: do not infer omitted changes.
+Every article must cite at least one exact 40-character SHA from this batch. Return only this batch's citations; earlier citations are restored automatically when an article is updated. Do not invent references, benchmarks, code, or user intent. Explain what each cited patch supports. A truncated patch is incomplete evidence: do not infer omitted changes.
 New slugs start with the repository name. Preserve existing slugs. Each article should be under 700 words; solution and verification may include Markdown lists or fenced code.
 Return only a JSON object {"lessons":[...]}, with no surrounding code fence. Each lesson has these fields:
 slug,title,summary,repo,category,tags,triggers,invariant,symptom,cause,solution,verification,limitations,commits:[{sha,note}],status,related.
@@ -79,9 +79,13 @@ export async function syncSource(env: Env, repo: string) {
     const serialized = JSON.stringify(context)
     // ponytail: bounded batches fit one model context; switch to retrieved per-topic evidence if the source outgrows 80 KB.
     if (serialized.length > 80000) throw new Error('Evidence batch exceeds context limit; cursor retained')
+    const citedLesson = lessonSchema.safeExtend({
+      repo: z.literal(repo),
+      commits: z.array(lessonSchema.shape.commits.element.extend({ sha: z.enum(commits.map(commit => commit.sha)) })).min(1).max(commits.length),
+    })
     const response = await env.AI.run(GENERATION_MODEL, {
       messages: [{ role: 'system', content: prompt }, { role: 'user', content: `${serialized}\n/no_think` }],
-      max_tokens: 7000, temperature: 0.2, response_format: { type: 'json_schema', json_schema: z.toJSONSchema(extractionSchema) },
+      max_tokens: 7000, temperature: 0.2, response_format: { type: 'json_schema', json_schema: z.toJSONSchema(extractionSchema.extend({ lessons: z.array(citedLesson).max(3) })) },
     }) as { response?: unknown; choices?: { message?: { content?: string } }[] }
     const output = response.response ?? response.choices?.[0]?.message?.content
     if (!output) throw new Error('Empty extraction response')
