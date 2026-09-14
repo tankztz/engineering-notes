@@ -1,10 +1,18 @@
 # Engineering Notes
 
-[Open the knowledge base](https://engineering-notes.tankztz.workers.dev) · [Agent entry point](https://engineering-notes.tankztz.workers.dev/llms.txt)
+[Open the knowledge base](https://engineering-notes.tianzezhao.com) · [Agent entry point](https://engineering-notes.tianzezhao.com/llms.txt)
 
 An English-only, searchable knowledge base distilled from real repository fixes. Each lesson explains a failure pattern, the behavior to preserve, the final solution, verification, applicability, and exact source commits.
 
 The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Search combines SQLite FTS5 with multilingual semantic retrieval. Related lessons connect recurring concepts across repositories.
+
+## Login and sharing
+
+The library requires SyntaxSkills login. This includes search, discovery, Markdown, exports, status, and sitemap routes. The former Workers URL redirects to the custom domain. Authorized automation can use the existing admin bearer token; never put it in a URL, prompt, or Git.
+
+Open a lesson and expand **Share this lesson** to create a link. Anyone with that link can read only that article, including its Markdown version. Shared pages omit collection navigation, search, and related lessons. Creating another link replaces your previous link for that lesson; **Revoke my share link** disables it immediately. Each signed-in user manages their own links. Links follow the current article at its stable slug, without granting access to other lessons or revisions.
+
+SyntaxSkills cookies cannot cross from `syntaxskills.com` to `tianzezhao.com`. The auth service's `/api/notes-sso` endpoint bridges login with a 60-second, single-use PKCE grant and a fixed callback. Notes keeps the upstream credential in D1, issues an opaque host-only HttpOnly cookie, and revalidates the central session on protected requests. Share credentials are hashed in D1, grant no session, and work without the login service. Content responses use `no-store`, `no-referrer`, and `noindex` headers.
 
 ## Automatic maintenance
 
@@ -60,14 +68,14 @@ Tests use real SQLite/FTS5 and stub external services. They cover the English fo
 
 ## Deploy
 
-The checked-in Wrangler configuration targets the existing deployment. For a new account, create a D1 database and a Vectorize index with 1,024 dimensions and cosine distance, then replace the database ID. Add a string metadata index for `repo` before inserting vectors. Bind Workers AI, set a strong `ADMIN_TOKEN` with `wrangler secret put`, and optionally set `SITE_URL` and a custom domain in Wrangler configuration. Set a `GITHUB_TOKEN` secret for reliable ingestion: unauthenticated GitHub requests from shared Worker addresses can immediately hit rate limits. Public repository read access is sufficient.
+The checked-in Wrangler configuration targets `engineering-notes.tianzezhao.com`. Deploy the companion `/api/notes-sso` route in `../syntaxskills-auth` before deploying Notes. For a new account, create a D1 database and a Vectorize index with 1,024 dimensions and cosine distance, then replace the database ID. Add a string metadata index for `repo` before inserting vectors. Bind Workers AI and set a strong `ADMIN_TOKEN` with `wrangler secret put`. Set a `GITHUB_TOKEN` secret for reliable ingestion: unauthenticated GitHub requests from shared Worker addresses can immediately hit rate limits. Public repository read access is sufficient.
 
 ```sh
 npx wrangler d1 migrations apply engineering-notes --remote
 npm run deploy
 ```
 
-Management commands require `NOTES_URL` and `NOTES_ADMIN_TOKEN` in the environment. Credentials must never be committed. Public retrieval requires no token.
+Management commands and exports require `NOTES_URL` and `NOTES_ADMIN_TOKEN` in the environment. Credentials must never be committed. Browser retrieval requires SyntaxSkills login; only explicit article share links allow anonymous reading.
 
 ```sh
 # Follow future commits from the current main branch head.

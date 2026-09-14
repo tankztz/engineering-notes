@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { bodyLimit } from 'hono/body-limit'
@@ -6,23 +5,47 @@ import { z } from 'zod'
 import { allLessons, commitSha, getLesson, indexLesson, lessonSchema, markdown, repository, saveLessons, searchLessons, type Env, type Source } from './knowledge.ts'
 import { agentGuide, article, home, prosePage, searchPage, shell, statusPage } from './pages.ts'
 import { github, syncAll, syncSource } from './sync.ts'
+import { access, adminToken, hashToken, newToken, validToken, type AppEnv } from './access.ts'
 
-export const app = new Hono<{ Bindings: Env; Variables: { isAdmin: boolean } }>()
+export const app = new Hono<AppEnv>()
 app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff')
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
-  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-  c.header('Link', '</llms.txt>; rel="describedby"')
+  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://auth.syntaxskills.com")
   await next()
 })
+app.route('/', access)
+app.on('GET', ['/style.css', '/app.js', '/favicon.svg'], c => c.env.ASSETS.fetch(c.req.raw))
 app.use('/api/admin/*', bodyLimit({ maxSize: 200_000 }))
 app.use('/api/admin/*', async (c, next) => {
-  const supplied = Buffer.from(c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '')
-  const expected = Buffer.from(c.env.ADMIN_TOKEN ?? '')
-  if (!expected.length || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return c.json({ error: 'Unauthorized' }, 401)
+  if (!adminToken(c.req.raw, c.env)) return c.json({ error: 'Unauthorized' }, 401)
   c.set('isAdmin', true)
   c.header('Cache-Control', 'no-store')
   await next()
+})
+
+app.get('/share/:token', async c => {
+  const rawToken = c.req.param('token')
+  const token = rawToken.replace(/\.md$/, '')
+  if (!validToken(token)) return c.text('Share link unavailable or revoked.', 404)
+  const share = await c.env.DB.prepare('SELECT slug FROM shares WHERE token_hash = ?').bind(hashToken(token)).first<{ slug: string }>()
+  const lesson = share ? await getLesson(c.env, share.slug) : null
+  if (!lesson) return c.text('Share link unavailable or revoked.', 404)
+  if (rawToken.endsWith('.md') || c.req.header('accept')?.includes('text/markdown')) return c.body(markdown(lesson), 200, { 'Content-Type': 'text/markdown; charset=utf-8' })
+  return c.html(shell(lesson.title, lesson.summary, article(lesson, [], `/share/${token}`), `/share/${token}`, c.env.SITE_URL || new URL(c.req.url).origin, '', true))
+})
+
+app.use('/api/lessons/:slug/share', bodyLimit({ maxSize: 1024 }))
+app.on(['POST', 'DELETE'], '/api/lessons/:slug/share', async c => {
+  if (!c.get('isAdmin') && c.req.header('origin') !== new URL(c.req.url).origin) return c.json({ error: 'Invalid request origin' }, 403)
+  const lesson = await getLesson(c.env, c.req.param('slug'))
+  if (!lesson) return c.json({ error: 'Lesson not found' }, 404)
+  if (c.req.method === 'DELETE') {
+    await c.env.DB.prepare('DELETE FROM shares WHERE slug = ? AND user_id = ?').bind(lesson.slug, c.get('userId')).run()
+    return c.json({ revoked: true })
+  }
+  const token = newToken()
+  await c.env.DB.prepare('INSERT INTO shares(slug,user_id,token_hash) VALUES(?,?,?) ON CONFLICT(slug,user_id) DO UPDATE SET token_hash=excluded.token_hash, created_at=CURRENT_TIMESTAMP').bind(lesson.slug, c.get('userId'), hashToken(token)).run()
+  return c.json({ url: `${c.env.SITE_URL || new URL(c.req.url).origin}/share/${token}` }, 201)
 })
 
 app.get('/', async c => {
@@ -55,8 +78,6 @@ app.get('/api/search', async c => {
   if (!q || q.length > 240) return c.json({ error: 'q must contain 1–240 characters' }, 400)
   const result = await searchLessons(c.env, q, c.req.query('repo'))
   const origin = c.env.SITE_URL || new URL(c.req.url).origin
-  c.header('Access-Control-Allow-Origin', '*')
-  c.header('Cache-Control', 'public, max-age=60')
   return c.json({ query: q, mode: result.mode, results: result.results.map(lesson => ({
     slug: lesson.slug, title: lesson.title, summary: lesson.summary, repo: lesson.repo, tags: lesson.tags,
     triggers: lesson.triggers, invariant: lesson.invariant, limitations: lesson.limitations, score: lesson.score,
@@ -67,7 +88,6 @@ app.get('/api/search', async c => {
 
 app.get('/api/index.json', async c => {
   const origin = c.env.SITE_URL || new URL(c.req.url).origin
-  c.header('Access-Control-Allow-Origin', '*')
   return c.json({ name: 'Engineering Notes', llms: `${origin}/llms.txt`, search: `${origin}/api/search?q={query}`, lessons: (await allLessons(c.env)).map(lesson => ({
     slug: lesson.slug, title: lesson.title, summary: lesson.summary, repo: lesson.repo, category: lesson.category,
     tags: lesson.tags, triggers: lesson.triggers, status: lesson.status, updated_at: lesson.updatedAt,
@@ -76,7 +96,6 @@ app.get('/api/index.json', async c => {
 })
 
 app.get('/api/export', async c => {
-  c.header('Access-Control-Allow-Origin', '*')
   return c.json({ format: 'engineering-notes/v1', exportedAt: new Date().toISOString(), lessons: (await allLessons(c.env)).map(lesson => ({ ...lesson, markdown: markdown(lesson) })) })
 })
 
@@ -108,7 +127,7 @@ app.get('/sitemap.xml', async c => {
   const paths = ['/', '/agents', ...(await allLessons(c.env)).filter(lesson => lesson.status === 'active').map(lesson => `/lessons/${lesson.slug}`)]
   return c.body(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`, 200, { 'Content-Type': 'application/xml' })
 })
-app.get('/robots.txt', c => c.text(`User-agent: *\nAllow: /\nDisallow: /api/admin/\nSitemap: ${c.env.SITE_URL || new URL(c.req.url).origin}/sitemap.xml\n`))
+app.get('/robots.txt', c => c.text('User-agent: *\nDisallow: /\n'))
 app.get('/health', async c => c.json({ ok: true, lessons: (await c.env.DB.prepare('SELECT count(*) AS count FROM lessons').first<{ count: number }>())?.count ?? 0 }))
 
 app.put('/api/admin/sources', async c => {

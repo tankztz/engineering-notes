@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { URL } from 'node:url'
+import { hashToken } from '../src/access.ts'
 import { app } from '../src/index.ts'
 import { allLessons, lessonSchema, markdown, saveLessons, searchLessons, type Env, type Lesson } from '../src/knowledge.ts'
 import { evidenceText, syncSource, validateExtraction } from '../src/sync.ts'
@@ -12,7 +13,7 @@ const sample = seeds.find(lesson => lesson.slug.includes('hover'))!
 
 function database() {
   const sqlite = new DatabaseSync(':memory:')
-  sqlite.exec(readFileSync(new URL('../migrations/0001.sql', import.meta.url), 'utf8'))
+  for (const file of readdirSync(new URL('../migrations/', import.meta.url)).sort()) sqlite.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), 'utf8'))
   function prepare(sql: string) {
     let values: unknown[] = []
     return {
@@ -34,7 +35,7 @@ function database() {
 }
 
 function environment(DB: D1Database) {
-  return { DB, ADMIN_TOKEN: 'test-secret', SITE_URL: 'https://notes.example.com',
+  return { DB, ADMIN_TOKEN: 'test-secret',
     AI: { async run() { return { data: [Array(1024).fill(0.1)] } } },
     LESSONS: { async upsert() {}, async query() { return { matches: [] } } },
   } as unknown as Env
@@ -58,11 +59,11 @@ test('published HTML, Markdown, agent discovery, search and failure paths work a
   try {
     await saveLessons(env, seeds)
     for (const path of ['/', '/llms.txt', '/llms-full.txt', '/api/index.json', '/api/export', '/agents', '/agents.md', '/openapi.json', '/status', `/lessons/${sample.slug}`, `/lessons/${sample.slug}.md`]) {
-      const response = await app.request(`https://notes.example.com${path}`, {}, env)
+      const response = await app.request(`https://notes.example.com${path}`, { headers: { authorization: 'Bearer test-secret' } }, env)
       assert.equal(response.status, 200, path)
       assert.doesNotMatch(await response.text(), /\p{Script=Han}/u)
     }
-    const md = await app.request(`https://notes.example.com/lessons/${sample.slug}`, { headers: { accept: 'text/markdown' } }, env)
+    const md = await app.request(`https://notes.example.com/lessons/${sample.slug}`, { headers: { accept: 'text/markdown', authorization: 'Bearer test-secret' } }, env)
     assert.match(md.headers.get('content-type')!, /text\/markdown/)
     assert.equal(await md.text(), markdown(sample))
     const search = await searchLessons(env, 'hover flicker')
@@ -77,9 +78,9 @@ test('published HTML, Markdown, agent discovery, search and failure paths work a
     const fallback = await searchLessons(env, 'horizontal overflow')
     assert.equal(fallback.mode, 'keyword')
     assert.equal(fallback.results[0].slug, 'muxmap-markdown-table-overflow')
-    assert.equal((await app.request('/api/search?q=', {}, env)).status, 400)
+    assert.equal((await app.request('/api/search?q=', { headers: { authorization: 'Bearer test-secret' } }, env)).status, 400)
     assert.equal((await app.request('/api/admin/status', {}, env)).status, 401)
-    assert.equal((await app.request('/lessons/missing', {}, env)).status, 404)
+    assert.equal((await app.request('/lessons/missing', { headers: { authorization: 'Bearer test-secret' } }, env)).status, 404)
   } finally { sqlite.close() }
 })
 
@@ -97,6 +98,113 @@ test('failed indexing preserves the previous document; successful revisions reta
     await saveLessons(env, [updated])
     assert.equal((await allLessons(env))[0].summary, updated.summary)
     assert.equal(sqlite.prepare('SELECT count(*) AS count FROM revisions').get()!.count, 1)
+  } finally { sqlite.close() }
+})
+
+test('SyntaxSkills login gates every collection route and share links grant only one revocable article', async t => {
+  const { sqlite, DB } = database()
+  const env = environment(DB)
+  const origin = 'https://notes.example.com'
+  const token = 's'.repeat(43)
+  let userId: string | null = 'user-1'
+  let authCalls = 0
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    authCalls++
+    if (url.endsWith('/api/notes-sso')) {
+      assert.equal(init.method, 'POST')
+      assert.ok(JSON.parse(init.body as string).code_verifier)
+      return Response.json({ cookie: '__Secure-syntaxskills-auth.session_token=signed-session', expiresAt: new Date(Date.now() + 86400_000).toISOString() })
+    }
+    assert.equal(new Headers(init.headers).get('cookie'), '__Secure-syntaxskills-auth.session_token=signed-session')
+    return Response.json({ user: userId ? { id: userId } : null })
+  })
+  const signed = { cookie: `__Host-notes-session=${token}`, origin }
+  const request = (path: string, init: RequestInit = {}) => app.request(origin + path, init, env)
+  const privatePaths = ['/', '/search?q=hover', '/api/search?q=hover', '/api/index.json', '/api/export', '/llms.txt', '/llms-full.txt', '/agents', '/agents.md', '/openapi.json', '/status', '/sitemap.xml', '/health', `/lessons/${sample.slug}`, `/lessons/${sample.slug}.md`]
+  try {
+    await saveLessons(env, seeds)
+    for (const path of privatePaths) {
+      const response = await request(path)
+      assert.ok([302, 401].includes(response.status), path)
+      assert.match(response.headers.get('cache-control')!, /no-store/)
+      assert.ok(!(await response.text()).includes(sample.title), path)
+    }
+    assert.equal((await request(`/api/lessons/${sample.slug}/share`, { method: 'POST' })).status, 401)
+    assert.equal((await request('/api/export', { headers: { cookie: '__Host-notes-session=forged' } })).status, 401)
+    env.SITE_URL = origin
+    const legacy = await app.request(`https://engineering-notes.tankztz.workers.dev/lessons/${sample.slug}`, {}, env)
+    assert.equal(legacy.status, 308)
+    assert.equal(legacy.headers.get('location'), origin + `/lessons/${sample.slug}`)
+
+    const start = await request(`/auth/login?next=${encodeURIComponent('/lessons/' + sample.slug)}`)
+    const pending = start.headers.get('set-cookie')!.split(';')[0]
+    const target = new URL(start.headers.get('location')!)
+    assert.equal(target.origin, 'https://auth.syntaxskills.com')
+    assert.match(start.headers.get('set-cookie')!, /HttpOnly; Secure; SameSite=Lax/)
+    const state = target.searchParams.get('state')!
+    const callback = `/auth/callback?code=${'c'.repeat(43)}&state=${state}`
+    assert.equal((await request(callback)).status, 400)
+    assert.equal((await request(callback.replace(state, 'wrong'), { headers: { cookie: pending } })).status, 400)
+    assert.equal(authCalls, 0)
+    const finish = await request(callback, { headers: { cookie: pending } })
+    assert.equal(finish.status, 302)
+    assert.equal(finish.headers.get('location'), '/lessons/' + sample.slug)
+    assert.ok(finish.headers.getSetCookie().some(cookie => cookie.startsWith('__Host-notes-session=') && cookie.includes('HttpOnly')))
+    const external = await request('/auth/login?next=https://evil.example/')
+    const externalPending = JSON.parse(decodeURIComponent(external.headers.get('set-cookie')!.split(';')[0].split('=').slice(1).join('=')))
+    assert.equal(externalPending.next, '/')
+
+    sqlite.prepare('INSERT INTO web_sessions(token_hash,auth_cookie,expires_at) VALUES(?,?,?)').run(hashToken(token), '__Secure-syntaxskills-auth.session_token=signed-session', Date.now() + 86400_000)
+    for (const path of privatePaths) {
+      const response = await request(path, { headers: signed })
+      assert.equal(response.status, 200, path)
+      assert.match(response.headers.get('cache-control')!, /no-store/)
+      assert.equal(response.headers.get('access-control-allow-origin'), null)
+    }
+    const sharePath = `/api/lessons/${sample.slug}/share`
+    assert.equal((await request(sharePath, { method: 'POST', headers: { ...signed, origin: 'https://evil.example' } })).status, 403)
+    assert.equal((await request(sharePath, { method: 'DELETE', headers: { cookie: signed.cookie } })).status, 403)
+    const created = await request(sharePath, { method: 'POST', headers: signed })
+    assert.equal(created.status, 201)
+    const shared = new URL((await created.json() as { url: string }).url)
+    const shareToken = shared.pathname.split('/').at(-1)!
+    assert.equal(sqlite.prepare('SELECT token_hash FROM shares').get()!.token_hash, hashToken(shareToken))
+    const callsBeforeShare = authCalls
+    const sharedResponse = await request(shared.pathname)
+    assert.equal(sharedResponse.status, 200)
+    assert.equal(sharedResponse.headers.get('referrer-policy'), 'no-referrer')
+    assert.match(sharedResponse.headers.get('x-robots-tag')!, /noindex/)
+    const sharedHtml = await sharedResponse.text()
+    assert.match(sharedHtml, /Access to this page only/)
+    assert.ok(sharedHtml.includes(sample.title))
+    assert.ok(sharedHtml.includes(`${shared.pathname}.md`))
+    assert.doesNotMatch(sharedHtml, /Related lessons|header-search|data-share-slug|JSON index|All lessons/)
+    for (const lesson of seeds.filter(lesson => lesson.slug !== sample.slug)) assert.ok(!sharedHtml.includes(lesson.title))
+    assert.equal(await (await request(shared.pathname + '.md')).text(), markdown(sample))
+    assert.equal(await (await request(shared.pathname, { headers: { accept: 'text/markdown' } })).text(), markdown(sample))
+    assert.equal(authCalls, callsBeforeShare)
+    const otherSlug = seeds.find(lesson => lesson.slug !== sample.slug)!.slug
+    for (const path of [...privatePaths, `/lessons/${otherSlug}`, `/lessons/${otherSlug}.md`]) {
+      const separator = path.includes('?') ? '&' : '?'
+      const response = await request(`${path}${separator}share=${shareToken}`, { headers: { authorization: `Bearer ${shareToken}`, cookie: `__Host-notes-session=${shareToken}` } })
+      assert.ok([302, 401].includes(response.status), path)
+    }
+    assert.equal((await request(shared.pathname + '/' + otherSlug)).status, 404)
+    assert.equal((await request(sharePath, { method: 'DELETE', headers: { origin, authorization: `Bearer ${shareToken}` } })).status, 401)
+    const rotated = new URL((await (await request(sharePath, { method: 'POST', headers: signed })).json() as { url: string }).url)
+    assert.equal((await request(shared.pathname)).status, 404)
+    userId = 'user-2'
+    await request(sharePath, { method: 'DELETE', headers: signed })
+    assert.equal((await request(rotated.pathname)).status, 200)
+    userId = 'user-1'
+    await request(sharePath, { method: 'DELETE', headers: signed })
+    assert.equal((await request(rotated.pathname)).status, 404)
+    assert.equal((await request(rotated.pathname + '.md')).status, 404)
+    userId = null
+    assert.equal((await request('/api/export', { headers: signed })).status, 401)
+    assert.equal(sqlite.prepare('SELECT token_hash FROM web_sessions WHERE token_hash = ?').get(hashToken(token)), undefined)
+    assert.equal((await request('/auth/logout', { method: 'POST', headers: { origin: 'https://evil.example' } })).status, 403)
+    assert.equal((await request('/auth/logout', { method: 'POST', headers: signed })).status, 303)
   } finally { sqlite.close() }
 })
 
