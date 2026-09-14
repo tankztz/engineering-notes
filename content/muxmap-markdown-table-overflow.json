@@ -1,0 +1,38 @@
+{
+  "slug": "muxmap-markdown-table-overflow",
+  "title": "Give wide Markdown tables their own scroll region",
+  "summary": "A Markdown renderer can produce a valid table while the page layout still overflows. Contain horizontal scrolling at the table boundary so surrounding content and the viewport stay stable.",
+  "repo": "syntaxskills/muxmap",
+  "category": "Content and files",
+  "tags": [
+    "Markdown",
+    "table",
+    "horizontal overflow",
+    "scroll container",
+    "mobile",
+    "accessibility"
+  ],
+  "triggers": [
+    "A wide table makes the entire page move horizontally.",
+    "Long URLs or unbroken identifiers force a Markdown preview beyond the viewport.",
+    "Table borders disappear into a light or dark theme."
+  ],
+  "invariant": "The page remains within the viewport. Each oversized table can scroll horizontally on its own, with the last column reachable and the heading position unchanged.",
+  "symptom": "Markdown previews used markdown-it, but wide tables expanded the page instead of scrolling independently. Table cell boundaries had also been difficult to see.",
+  "cause": "Parsing and layout are separate responsibilities. The renderer emitted a normal HTML table; the preview styles did not provide a constrained ancestor with horizontal overflow handling. Long cell contents exposed the missing containment.",
+  "solution": "Wrap each rendered table in its own region with max-width: 100%, overflow-x: auto, and horizontal overscroll containment. Keep border-collapse on the table. Give the region a visible keyboard focus style and an accessible name so keyboard users can reach offscreen columns.\n\nAdd a mobile viewport meta tag and use explicit cell borders with sufficient contrast in both themes. Apply the wrapper in the shared table renderer so all Markdown tables follow the same rule.\n\n```css\n.table-scroll {\n  max-width: 100%;\n  overflow-x: auto;\n  overscroll-behavior-x: contain;\n}\n```",
+  "verification": "Render a table with many columns, long unbroken text, and URLs. Check desktop and narrow mobile viewports in light and dark modes. Scroll to the last column and confirm window.scrollX stays zero, the heading does not move, and a second table retains its independent scroll position. Test keyboard scrolling and visible cell borders.",
+  "limitations": "Use local overflow containment for content that genuinely needs width. Hiding all page overflow can conceal unreachable content and mask the underlying layout issue. A table wrapper does not fix unrelated wide elements such as code blocks or fixed-width headers.",
+  "commits": [
+    {
+      "sha": "50b434aa7e5f26a5a07483a5462ba510011a1c46",
+      "note": "Wrapped every Markdown table in a keyboard-focusable horizontal scroll region and added viewport metadata."
+    },
+    {
+      "sha": "c3c385212dfd652cc22507de3b5f1d0f56351228",
+      "note": "Added visible cell borders and header backgrounds for both preview themes."
+    }
+  ],
+  "status": "active",
+  "related": []
+}

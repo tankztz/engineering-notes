@@ -1,0 +1,41 @@
+{
+  "slug": "muxmap-terminal-readiness",
+  "title": "Show progress immediately and enable input on real terminal readiness",
+  "summary": "Starting a session, opening a WebSocket, and having an interactive terminal are different milestones. Reflect each milestone promptly and avoid delaying the terminal behind an unrelated workspace refresh.",
+  "repo": "syntaxskills/muxmap",
+  "category": "Async and state",
+  "tags": [
+    "loading",
+    "readiness",
+    "WebSocket",
+    "terminal",
+    "stale response",
+    "optimistic UI"
+  ],
+  "triggers": [
+    "A start button remains visible after the server has created the session.",
+    "An interface appears frozen while a terminal is attaching.",
+    "A WebSocket is open but terminal input is not ready.",
+    "An older polling response restores stale stopped-session state."
+  ],
+  "invariant": "The click produces immediate progress feedback. Once the session response arrives, the terminal panel can open without waiting for a full workspace refresh. Input becomes available only after backend readiness is confirmed.",
+  "symptom": "The attach action briefly appeared unresponsive. Later, even after a successful start, the old start button remained until a slower workspace reload finished and the terminal panel appeared.",
+  "cause": "The UI treated several asynchronous operations as one step. Session creation was followed by an awaited full workspace reload before the returned session was used. Concurrent polling could also deliver an older snapshot after a new session had been attached. A socket open event by itself did not confirm that terminal setup had completed.",
+  "solution": "Set request progress immediately when starting or attaching. Distinguish lazy UI loading from terminal connection setup. Keep terminal input disabled until the backend running status is received and the terminal write callback permits activation. Clear progress and expose errors on failure.\n\nUse the successful session response directly to update the local session entry and open its panel. Increment a workspace revision when a session is attached; discard in-flight workspace responses whose captured revision is older. Replace the returned session object so stale runtime flags cannot survive an incorrect merge.",
+  "verification": "Hold the session response and confirm progress appears immediately while the map remains usable. Release the response but hold workspace polling; the terminal panel must still open. Hold the backend running status and verify input stays disabled. Release readiness and verify a command reaches the terminal. Finally, deliver an older stopped-session snapshot and confirm it cannot undo the new session. Exercise API and connection failures as well.",
+  "limitations": "A running status is only meaningful if the backend sends it after the relevant setup. This is an application protocol, not a property of WebSocket open. Revision guards address responses that began before the local mutation; they do not replace proper server-side consistency for unrelated concurrent writers.",
+  "commits": [
+    {
+      "sha": "ccf900aa92890671fb7c513e095e1e37d01da21a",
+      "note": "Added attach progress, lazy loading feedback, explicit connection readiness, and input gating."
+    },
+    {
+      "sha": "69c72df320e25de351d6f4ba578b940ba47478f5",
+      "note": "Opened terminals from the returned session immediately and rejected older workspace responses with a revision guard."
+    }
+  ],
+  "status": "active",
+  "related": [
+    "muxmap-preserve-selection-on-outside-click"
+  ]
+}

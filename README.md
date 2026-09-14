@@ -1,0 +1,104 @@
+# Engineering Notes
+
+[Open the knowledge base](https://engineering-notes.tankztz.workers.dev) · [Agent entry point](https://engineering-notes.tankztz.workers.dev/llms.txt)
+
+An English-only, searchable knowledge base distilled from real repository fixes. Each lesson explains a failure pattern, the behavior to preserve, the final solution, verification, applicability, and exact source commits.
+
+The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Search combines SQLite FTS5 with multilingual semantic retrieval. Related lessons connect recurring concepts across repositories.
+
+## Automatic maintenance
+
+A Cloudflare Worker checks connected public repositories hourly. It processes one commit per repository per run, oldest first, and uses Workers AI to extract up to three lessons. Existing topics keep their URL and previous document revisions. Commits without reusable knowledge can produce no articles. Failed extraction or indexing leaves the source cursor unchanged for retry; `/status` shows pending retries.
+
+Only explicitly registered public repositories are read. Visibility is checked on every sync and import, including after a repository becomes private. Patches are bounded and treated as untrusted evidence. Documents must pass the English-only schema and reference actual commits from the batch or the existing lesson. Generated explanations can still be mistaken: inspect the cited code and applicability before using them. Verification sections describe checks to perform, not test execution claims.
+
+D1 is the source of truth for live documents and revisions. Vectorize stores a derived search index. The `content/` directory contains initial examples, not a manually maintained copy of the live collection. New lessons publish directly without a site rebuild. `GET /api/export` provides a full current document backup; `npm run export` writes Markdown files.
+
+## Agent access
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/llms.txt` | Discover topics and agent entry points |
+| `/agents.md` | Retrieval workflow and reusable development instructions |
+| `/api/search?q=description&repo=owner/name` | Ranked results with triggers, invariants, scope, Markdown URLs, and commit evidence; repository filter is optional |
+| `/lessons/{slug}.md` | Read the full article |
+| `/llms-full.txt` | Read all active lessons in one response |
+| `/api/index.json` | Structured document index |
+| `/openapi.json` | Search and retrieval API schema |
+| `/api/export` | Export structured documents and rendered Markdown |
+
+HTML article URLs also accept `Accept: text/markdown`. Search accepts natural language in multiple languages; stored documents, navigation, and generation instructions are English. Keyword search remains available if semantic retrieval is unavailable.
+
+An agent must be given the site's entry point: `llms.txt` does not automatically configure other agents. Copy the short instructions from `/agents.md` into the relevant workspace's `AGENTS.md` or equivalent instructions.
+
+## Document format
+
+`src/knowledge.ts` defines the validated schema. Initial documents in `content/` are complete examples. Every article contains:
+
+1. Title, summary, repository, category, tags, and status.
+2. Natural-language triggers: when this lesson applies.
+3. The behavioral invariant to preserve.
+4. Symptoms and root cause.
+5. The final solution, including superseded attempts when supported by evidence.
+6. Verification steps that cover intermediate and final states.
+7. Applicability and limits.
+8. Exact 40-character commit SHAs and an explanation of what each proves.
+
+## Develop and verify
+
+Requires Node.js 22 or newer.
+
+```sh
+npm ci
+npm test
+npm run build
+npx wrangler d1 migrations apply engineering-notes --local
+npm run dev
+```
+
+Tests use real SQLite/FTS5 and stub external services. They cover the English format, rendered routes, retrieval fallback, authentication, citation validation, document preservation on failure, revisions, and automatic cursor advancement. Semantic relevance and actual model output also need live verification after changes to the prompt or embedding model.
+
+## Deploy
+
+The checked-in Wrangler configuration targets the existing deployment. For a new account, create a D1 database and a Vectorize index with 1,024 dimensions and cosine distance, then replace the database ID. Add a string metadata index for `repo` before inserting vectors. Bind Workers AI, set a strong `ADMIN_TOKEN` with `wrangler secret put`, and optionally set `SITE_URL` and a custom domain in Wrangler configuration. Set a `GITHUB_TOKEN` secret for reliable ingestion: unauthenticated GitHub requests from shared Worker addresses can immediately hit rate limits. Public repository read access is sufficient.
+
+```sh
+npx wrangler d1 migrations apply engineering-notes --remote
+npm run deploy
+```
+
+Management commands require `NOTES_URL` and `NOTES_ADMIN_TOKEN` in the environment. Credentials must never be committed. Public retrieval requires no token.
+
+```sh
+# Follow future commits from the current main branch head.
+npm run source -- owner/repo
+
+# For a new source, optionally begin after an earlier full commit SHA.
+npm run source -- owner/repo 0123456789abcdef0123456789abcdef01234567
+
+# Import the initial articles once, after registering syntaxskills/muxmap.
+npm run seed
+
+# Run a check now; otherwise the hourly job handles it.
+npm run sync -- owner/repo
+
+# Save current articles as Markdown.
+npm run export -- exports
+```
+
+Registering an existing repository does not reset its cursor. Do not rerun the initial seed import over automatically updated articles unless intentionally restoring those examples. `PUT /api/admin/sources` also accepts a `branch` field; the CLI uses `main`. Authenticated `/api/admin/status` includes error details and cursors.
+
+## Operating limits
+
+The initial collector checks up to four sources per hourly run, oldest checked first. Each commit is considered separately so unrelated changes do not dilute extraction. Evidence is limited to twelve files and 12,000 patch characters per commit, distributed across files. Oversized evidence is rejected without advancing the cursor. GitHub requests use `GITHUB_TOKEN` when configured and remain subject to GitHub's rate limit. Large histories catch up over multiple runs; large-scale ingestion needs adjusted scheduling.
+
+The language model does not run repository code or tests. Publication validates structure and references, not every causal claim. Previous revisions remain in D1's `revisions` table. Diverged Git history requires inspecting the stored cursor instead of silently dropping unprocessed commits.
+
+## References
+
+- [llms.txt specification](https://llmstxt.org/)
+- [Workers AI BGE-M3 embeddings](https://developers.cloudflare.com/workers-ai/models/bge-m3/)
+- [Workers AI Qwen3 generation](https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/)
+- [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/)
+
+After changing the embedding text or model, reindex current documents with authenticated `POST /api/admin/reindex` and a JSON body containing `slugs` (up to ten at a time). This rebuilds vectors without rewriting articles or revisions. Vectorize updates are eventually consistent; verify retrieval after the index catches up.

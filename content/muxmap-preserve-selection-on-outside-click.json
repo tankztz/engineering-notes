@@ -1,0 +1,41 @@
+{
+  "slug": "muxmap-preserve-selection-on-outside-click",
+  "title": "Preserve state directly instead of clearing and restoring it",
+  "summary": "An outside click cleared a selected node, and a terminal synchronization effect immediately selected it again. The final state looked correct, but the intermediate collapse still produced a visible flash.",
+  "repo": "syntaxskills/muxmap",
+  "category": "Interaction stability",
+  "tags": [
+    "outside click",
+    "dismiss",
+    "flicker",
+    "useEffect",
+    "state ownership",
+    "transient state"
+  ],
+  "triggers": [
+    "A panel briefly disappears and immediately returns after an outside click.",
+    "The final state is correct, but users report a flash or layout jump.",
+    "An open child surface automatically restores a parent selection."
+  ],
+  "invariant": "When an outside click is defined to preserve the selected node, both selection and expansion remain unchanged throughout the event. Its terminal remains open and usable. There must be no intermediate collapse.",
+  "symptom": "Clicking a terminal node opened the terminal. Clicking blank canvas then made the node shrink and expand again, although the intended interaction was to leave it in place.",
+  "cause": "Two code paths wrote the same selection state with conflicting intentions. The blank-canvas pointer handler set selectedId to null. A reactive terminal effect saw an open session and set selectedId back to that session node. Expanded layout followed selection, exposing the temporary state.",
+  "solution": "Trace every writer of the affected state, including event handlers, effects, restored URL state, and background refreshes.\n\nThe first fix removed the effect that forcibly reselected the terminal node. This stopped the rebound, but still allowed collapse. The later product decision required outside clicks to keep the node expanded, so the blank-canvas deselection path was removed as well. Pointer release now only ends panning.\n\nKeep node selection and terminal visibility independent. For an event that should do nothing to selection, leave selection untouched; do not repair it in a later effect. Selecting another node remains an explicit selection action.",
+  "verification": "1. Select a terminal node and record its selected/expanded state and bounding rectangle.\n2. Click blank canvas and sample state and geometry across animation frames, not only after a timeout. Assert that no collapsed frame occurs.\n3. Confirm the same terminal stays mounted and accepts input.\n4. Repeat with docked and floating terminals, background workspace updates, and a page reload.\n5. Confirm canvas panning preserves selection and explicitly selecting another node still works.",
+  "limitations": "The general lesson is to avoid conflicting state writers and test the complete transition. Preserving selection on outside click is a MuxMap product requirement; other interfaces may intentionally dismiss. Decide the expected behavior first, then implement that behavior directly. A debounce or shorter animation would leave the underlying conflict intact.",
+  "commits": [
+    {
+      "sha": "a52ed10e8cfd086d59f4d5dde39efcab42a41a05",
+      "note": "Removed terminal-driven forced reselection and preserved independent selection in restored view state."
+    },
+    {
+      "sha": "1d932fd49870c6ca18283e7c8b1dba069a9a7dd9",
+      "note": "Removed blank-canvas deselection so outside clicks preserve the selected, expanded node."
+    }
+  ],
+  "status": "active",
+  "related": [
+    "muxmap-hover-expansion-stability",
+    "muxmap-terminal-readiness"
+  ]
+}

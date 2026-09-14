@@ -1,0 +1,36 @@
+{
+  "slug": "muxmap-hover-expansion-stability",
+  "title": "Keep hover expansion stable when geometry changes",
+  "summary": "A hover effect can move its own hit area and repeatedly trigger enter and leave. Keep rendering, layout, and pointer containment consistent so a stationary cursor produces one stable expansion.",
+  "repo": "syntaxskills/muxmap",
+  "category": "Interaction stability",
+  "tags": [
+    "hover",
+    "flicker",
+    "layout",
+    "hit testing",
+    "hysteresis",
+    "React"
+  ],
+  "triggers": [
+    "An element expands on hover and then rapidly collapses and reopens.",
+    "The pointer is stationary, but mouseenter and mouseleave keep firing.",
+    "A graph node grows over its neighbors or changes position after expansion."
+  ],
+  "invariant": "After the pointer enters a node, it expands once and stays expanded while the pointer remains within its intended interaction area. The component must not manufacture a leave event merely by changing its own size.",
+  "symptom": "The expanded card flickered. The earlier implementation used different predicates for expanded rendering and expanded layout: hover affected visible height while the layout calculation still reserved the compact height.",
+  "cause": "Visual geometry and layout geometry disagreed. Expansion could overlap or reposition interactive surfaces, making raw enter/leave events an unstable source of truth at the boundary. A short leave timeout alone did not resolve the mismatch.",
+  "solution": "Use one expansion predicate for both layout dimensions and rendering. In MuxMap, selection or hover causes expansion. Calculate width and height once, then render those dimensions.\n\nBefore clearing hover, check the pointer against the expanded element rectangle. A modest spatial margin and a short leave grace period stabilize boundary crossings; cancel the pending clear when the pointer returns. The recorded implementation used a 40 px margin and 150 ms grace period. These values are project choices, not universal constants.\n\nIf the effect is purely decorative, a stable outer hit area with a transformed inner visual may avoid layout changes entirely. That is an alternative to evaluate, not the implementation of this commit.",
+  "verification": "1. Enter the node and stop moving the pointer. Observe several frames: expansion must not toggle.\n2. Move slowly across each edge, including the expanded area and grace margin.\n3. Check nearby nodes at different zoom levels and confirm the layout reserves the rendered dimensions.\n4. Confirm leaving the intended region eventually collapses an unselected node.\n5. Inspect intermediate states and bounding rectangles; a screenshot taken after settling can miss the flicker.",
+  "limitations": "Applies when hover changes component geometry. A grace period should address a real boundary crossing, not hide conflicting state ownership. Persistent selection may intentionally keep a node expanded after hover ends. The particular margin and delay need to match the interaction.",
+  "commits": [
+    {
+      "sha": "c0563234d64a20bf1dd03dab4a330deb419ea329",
+      "note": "Unified expanded layout and render dimensions, added pointer containment against an inflated rectangle, and retained a bounded leave grace period."
+    }
+  ],
+  "status": "active",
+  "related": [
+    "muxmap-preserve-selection-on-outside-click"
+  ]
+}
