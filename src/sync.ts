@@ -81,7 +81,7 @@ export async function syncSource(env: Env, repo: string) {
     if (serialized.length > 80000) throw new Error('Evidence batch exceeds context limit; cursor retained')
     const response = await env.AI.run(GENERATION_MODEL, {
       messages: [{ role: 'system', content: prompt }, { role: 'user', content: `${serialized}\n/no_think` }],
-      max_tokens: 7000, temperature: 0.2, response_format: { type: 'json_object' },
+      max_tokens: 7000, temperature: 0.2, response_format: { type: 'json_schema', json_schema: z.toJSONSchema(extractionSchema) },
     }) as { response?: unknown; choices?: { message?: { content?: string } }[] }
     const output = response.response ?? response.choices?.[0]?.message?.content
     if (!output) throw new Error('Empty extraction response')

@@ -122,8 +122,13 @@ test('automatic sync updates a lesson and advances its cursor only after success
   let isPrivate = false
   t.mock.method(globalThis, 'fetch', async (url: string) => Response.json(url.endsWith(sample.repo) ? { private: isPrivate } : url.includes('/compare/') ? { status: 'ahead', commits: [commit] } : commit))
   let fail = true
-  env.AI.run = (async (_model: string, input: { messages?: unknown }) => {
-    if (input.messages) { if (fail) throw new Error('Temporary inference failure'); return { response: { lessons: [generated] } } }
+  env.AI.run = (async (_model: string, input: { messages?: unknown; response_format?: { type: string; json_schema: { properties: { lessons: { maxItems: number } } } } }) => {
+    if (input.messages) {
+      assert.equal(input.response_format?.type, 'json_schema')
+      assert.equal(input.response_format?.json_schema.properties.lessons.maxItems, 3)
+      if (fail) throw new Error('Temporary inference failure')
+      return { response: { lessons: [generated] } }
+    }
     return { data: [Array(1024).fill(0.1)] }
   }) as Ai['run']
   try {
