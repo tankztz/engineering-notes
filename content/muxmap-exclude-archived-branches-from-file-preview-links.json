@@ -1,0 +1,35 @@
+{
+  "slug": "muxmap-exclude-archived-branches-from-file-preview-links",
+  "title": "When hidden items reappear in another view",
+  "summary": "A local visibility flag may miss state inherited from a parent. Reuse the full eligibility rule across views so archived branches do not leave visible descendants or references behind.",
+  "repo": "syntaxskills/muxmap",
+  "category": "Content and files",
+  "tags": [
+    "visibility",
+    "archived nodes",
+    "ancestor state",
+    "filtering",
+    "file preview",
+    "link references"
+  ],
+  "triggers": [
+    "An item hidden in the main view still appears in a preview or related-items list.",
+    "Archiving a parent leaves links to its children visible elsewhere.",
+    "An origin link follows a different visibility rule from the other references."
+  ],
+  "invariant": "When an item disappears in one view but reappears elsewhere, inspect whether every consumer uses the same eligibility rule. If visibility depends on ancestors, filtering only the item's own flag is insufficient. Apply the rule to explicit lookups and scanned references alike.",
+  "symptom": "MuxMap file previews could reference nodes inside archived branches. The patch adds a case where a child of an archived node is supplied as the preview origin, and asserts that the child no longer receives a \"From node\" link. The evidence concerns node references; it does not establish that the underlying file was outdated.",
+  "cause": "The old origin check looked at the node's own `archivedAt` flag. A child could lack that flag while belonging to an archived branch. The reference scan also needed the same eligibility check.\n\nTo investigate a similar leak, compare the rules used by the main view, explicit origin lookup, and related-reference scan. Include parent-derived state, not just flags stored on the item.",
+  "solution": "Expose the existing `activeNodes` rule through `store.listActiveNodes()`. Build a map of those nodes for the preview request. Resolve the explicit origin from that map and skip scanned references whose node IDs are absent. Both entry points then use the same branch visibility rule.",
+  "verification": "Create an active reference, an archived parent, and a child under that parent pointing to the same file. Check that the active reference remains and the archived branch contributes none. Supply the archived child explicitly as `nodeId` and verify that its \"From node\" link is absent. The patch adds assertions for this case; it does not provide an execution result.",
+  "limitations": "This can inform hierarchical menus, archived project trees, and related-item lists. Those are analogous applications, not recorded incidents. Visibility filtering is not a substitute for authorization. The source scans saved links per preview; an index may be needed if that becomes a measured bottleneck.",
+  "commits": [
+    {
+      "sha": "e843d30a657d52e89dba150dfc3299afab2d8d99",
+      "note": "Exclude archived branches from file preview node links"
+    }
+  ],
+  "status": "active",
+  "related": [],
+  "attempts": "The previous `!origin.archivedAt` check excluded a directly archived origin but could miss a descendant of an archived parent. Filtering only the origin would also leave the scanned references using different rules. The supplied patch does not document other attempted remedies."
+}

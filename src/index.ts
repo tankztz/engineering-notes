@@ -51,7 +51,7 @@ app.on(['POST', 'DELETE'], '/api/lessons/:slug/share', async c => {
 app.get('/', async c => {
   const lessons = await allLessons(c.env)
   const origin = c.env.SITE_URL || new URL(c.req.url).origin
-  return c.html(shell('Lessons from real fixes', 'Engineering lessons from real repository fixes, with semantic search and agent-readable Markdown.', home(lessons, c.req.query('category'), c.req.query('repo')), '/', origin))
+  return c.html(shell('Lessons from real fixes', 'Engineering lessons from real repository fixes, with semantic search and agent-readable Markdown.', home(lessons, c.req.query('category'), c.req.query('repo')), '/', origin, '', false, lessons))
 })
 
 app.get('/lessons/:slug', async c => {
@@ -61,16 +61,17 @@ app.get('/lessons/:slug', async c => {
   if (!lesson) return c.notFound()
   c.header('Link', `</lessons/${lesson.slug}.md>; rel="alternate"; type="text/markdown", </llms.txt>; rel="describedby"`)
   if (isMarkdown) return c.body(markdown(lesson), 200, { 'Content-Type': 'text/markdown; charset=utf-8' })
-  const related = (await allLessons(c.env)).filter(item => item.slug !== lesson.slug && item.status === 'active')
+  const lessons = await allLessons(c.env)
+  const related = lessons.filter(item => item.slug !== lesson.slug && item.status === 'active')
     .map(item => ({ item, score: (lesson.related.includes(item.slug) ? 20 : 0) + item.tags.filter(tag => lesson.tags.includes(tag)).length + (item.category === lesson.category ? 1 : 0) }))
     .filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 3).map(item => item.item)
-  return c.html(shell(lesson.title, lesson.summary, article(lesson, related), `/lessons/${lesson.slug}`, c.env.SITE_URL || new URL(c.req.url).origin))
+  return c.html(shell(lesson.title, lesson.summary, article(lesson, related), `/lessons/${lesson.slug}`, c.env.SITE_URL || new URL(c.req.url).origin, '', false, lessons))
 })
 
 app.get('/search', async c => {
   const q = (c.req.query('q') ?? '').trim().slice(0, 240)
   const result = q ? await searchLessons(c.env, q, c.req.query('repo')) : { results: [], mode: 'keyword' }
-  return c.html(shell('Search lessons', 'Search engineering lessons by symptoms, concepts, or code identifiers.', searchPage(q, result.results, result.mode), '/search', c.env.SITE_URL || new URL(c.req.url).origin, q))
+  return c.html(shell('Search lessons', 'Search engineering lessons by symptoms, concepts, or code identifiers.', searchPage(q, result.results, result.mode), '/search', c.env.SITE_URL || new URL(c.req.url).origin, q, false, await allLessons(c.env)))
 })
 
 app.get('/api/search', async c => {
@@ -110,12 +111,12 @@ app.get('/llms.txt', async c => {
   return c.body(body, 200, { 'Content-Type': 'text/plain; charset=utf-8' })
 })
 app.get('/llms-full.txt', async c => c.body((await allLessons(c.env)).filter(lesson => lesson.status === 'active').map(markdown).join('\n\n---\n\n'), 200, { 'Content-Type': 'text/plain; charset=utf-8' }))
-app.get('/agents', c => c.html(shell('For agents', 'Help coding agents retrieve applicable engineering lessons before implementation.', prosePage(agentGuide(c.env.SITE_URL || new URL(c.req.url).origin)), '/agents', c.env.SITE_URL || new URL(c.req.url).origin)))
+app.get('/agents', async c => c.html(shell('For agents', 'Help coding agents retrieve applicable engineering lessons before implementation.', prosePage(agentGuide(c.env.SITE_URL || new URL(c.req.url).origin)), '/agents', c.env.SITE_URL || new URL(c.req.url).origin, '', false, await allLessons(c.env))))
 app.get('/agents.md', c => c.body(agentGuide(c.env.SITE_URL || new URL(c.req.url).origin), 200, { 'Content-Type': 'text/markdown; charset=utf-8' }))
 app.get('/status', async c => {
   const sources = await c.env.DB.prepare('SELECT repo, branch, cursor, checked_at, error FROM sources ORDER BY repo').all<Source>()
   const runs = await c.env.DB.prepare('SELECT repo, commits, lessons, finished_at FROM sync_runs ORDER BY id DESC LIMIT 20').all<{ repo: string; commits: number; lessons: number; finished_at: string }>()
-  return c.html(shell('Updates', 'Connected repositories and automatic knowledge updates.', statusPage(sources.results, runs.results), '/status', c.env.SITE_URL || new URL(c.req.url).origin))
+  return c.html(shell('Updates', 'Connected repositories and automatic knowledge updates.', statusPage(sources.results, runs.results), '/status', c.env.SITE_URL || new URL(c.req.url).origin, '', false, await allLessons(c.env)))
 })
 app.get('/openapi.json', c => c.json({ openapi: '3.1.0', info: { title: 'Engineering Notes', version: '1.0.0', description: 'Search commit-backed engineering lessons before implementation; read applicability and invariants.' }, servers: [{ url: c.env.SITE_URL || new URL(c.req.url).origin }], paths: {
   '/api/search': { get: { operationId: 'searchLessons', summary: 'Search by symptoms, concepts or code terms in Chinese or English', parameters: [{ name: 'q', in: 'query', required: true, schema: { type: 'string', maxLength: 240 } }, { name: 'repo', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Ranked lessons with triggers, invariants, scope, exact commits and markdown_url', content: { 'application/json': { schema: { type: 'object' } } } } } } },

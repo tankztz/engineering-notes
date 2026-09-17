@@ -10,6 +10,7 @@ export const lessonSchema = z.object({
   tags: z.array(text.max(60)).min(1).max(12),
   triggers: z.array(text.max(180)).min(1).max(8),
   invariant: text, symptom: text, cause: text, solution: text, verification: text, limitations: text,
+  attempts: text.optional(),
   commits: z.array(z.object({ sha: commitSha, note: text.max(300) })).min(1).max(60),
   status: z.enum(['active', 'superseded']).default('active'),
   supersededBy: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
@@ -22,12 +23,26 @@ export type Source = { repo: string; branch: string; cursor: string; checked_at:
 export const EMBEDDING_MODEL = '@cf/baai/bge-m3'
 export const GENERATION_MODEL = '@cf/qwen/qwen3-30b-a3b-fp8'
 
+export function lessonSections(lesson: Lesson) {
+  return [
+    ['When to use this lesson', lesson.triggers.map(t => `- ${t}`).join('\n')],
+    ['What happened', lesson.symptom],
+    ['Diagnosis and approach', lesson.cause],
+    ['What did not work', lesson.attempts ?? 'The cited evidence does not document unsuccessful attempts.'],
+    ['What changed', lesson.solution],
+    ['How to verify the improvement', lesson.verification],
+    ['What to do next time', lesson.invariant],
+    ['Limits and exceptions', lesson.limitations],
+    ['Commit evidence', lesson.commits.map(c => `- [${lesson.repo}@${c.sha.slice(0, 7)}](https://github.com/${lesson.repo}/commit/${c.sha}): ${c.note}`).join('\n')],
+  ]
+}
+
 export function markdown(lesson: Lesson) {
-  return `# ${lesson.title}\n\n> ${lesson.summary}\n\nRepository: ${lesson.repo} · Category: ${lesson.category} · Status: ${lesson.status === 'active' ? 'Active' : 'Superseded'}\n\nKeywords: ${lesson.tags.join(', ')}\n\n## When to use this lesson\n\n${lesson.triggers.map(t => `- ${t}`).join('\n')}\n\n## Behavior to preserve\n\n${lesson.invariant}\n\n## Symptoms\n\n${lesson.symptom}\n\n## Root cause\n\n${lesson.cause}\n\n## Solution\n\n${lesson.solution}\n\n## Verification\n\n${lesson.verification}\n\n## Applicability\n\n${lesson.limitations}\n\n## Commit evidence\n\n${lesson.commits.map(c => `- [${lesson.repo}@${c.sha.slice(0, 7)}](https://github.com/${lesson.repo}/commit/${c.sha}): ${c.note}`).join('\n')}\n${lesson.supersededBy ? `\nReplacement lesson: [${lesson.supersededBy}](/lessons/${lesson.supersededBy}.md)\n` : ''}`
+  return `# ${lesson.title}\n\n> ${lesson.summary}\n\nRepository: ${lesson.repo} · Category: ${lesson.category} · Status: ${lesson.status === 'active' ? 'Active' : 'Superseded'}\n\nKeywords: ${lesson.tags.join(', ')}\n\n${lessonSections(lesson).map(([heading, body]) => `## ${heading}\n\n${body}`).join('\n\n')}\n${lesson.supersededBy ? `\nReplacement lesson: [${lesson.supersededBy}](/lessons/${lesson.supersededBy}.md)\n` : ''}`
 }
 
 export function searchText(lesson: Lesson) {
-  return [lesson.title, lesson.summary, ...lesson.tags, ...lesson.triggers, lesson.invariant, lesson.symptom, lesson.cause, lesson.solution, lesson.verification, lesson.limitations].join('\n')
+  return [lesson.title, lesson.summary, ...lesson.tags, ...lesson.triggers, lesson.invariant, lesson.symptom, lesson.cause, lesson.attempts, lesson.solution, lesson.verification, lesson.limitations].filter(Boolean).join('\n')
 }
 
 export function searchTokens(query: string) {

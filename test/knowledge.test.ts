@@ -42,15 +42,17 @@ function environment(DB: D1Database) {
 }
 
 test('seed articles follow the English format with exact commit evidence', () => {
-  assert.equal(seeds.length, 4)
+  assert.equal(seeds.length, 5)
   for (const lesson of seeds) {
     const md = markdown(lesson)
-    for (const heading of ['When to use this lesson', 'Behavior to preserve', 'Symptoms', 'Root cause', 'Solution', 'Verification', 'Applicability', 'Commit evidence']) assert.ok(md.includes(`## ${heading}`))
+    for (const heading of ['When to use this lesson', 'What happened', 'Diagnosis and approach', 'What did not work', 'What changed', 'How to verify the improvement', 'What to do next time', 'Limits and exceptions', 'Commit evidence']) assert.ok(md.includes(`## ${heading}`))
     assert.doesNotMatch(md, /\p{Script=Han}/u)
     assert.ok(lesson.commits.every(commit => md.includes(`/commit/${commit.sha}`)))
   }
   assert.throws(() => lessonSchema.parse({ ...sample, title: '\u4e2d\u6587' }), /English/)
   assert.throws(() => lessonSchema.parse({ ...sample, commits: [{ sha: '1234567', note: 'Short SHA' }] }))
+  const { attempts: _attempts, ...legacy } = sample
+  assert.match(markdown(lessonSchema.parse(legacy)), /does not document unsuccessful attempts/)
 })
 
 test('published HTML, Markdown, agent discovery, search and failure paths work against real SQL', async () => {
@@ -216,6 +218,8 @@ test('extraction rejects fabricated references, cross-repository overwrites and 
   assert.throws(() => validateExtraction({ lessons: [{ ...updated, commits: [{ sha: 'b'.repeat(40), note: 'Invented' }] }] }, sample.repo, [commit], [sample]), /unsupported/)
   assert.throws(() => validateExtraction({ lessons: [updated, updated] }, sample.repo, [commit], [sample]), /Duplicate/)
   assert.throws(() => validateExtraction({ lessons: [updated] }, 'other/repo', [commit], [sample]), /repository/)
+  const { attempts: _attempts, ...missingHistory } = updated
+  assert.throws(() => validateExtraction({ lessons: [missingHistory] }, sample.repo, [commit], [sample]), /attempts/)
   const evidence = evidenceText({ ...commit, files: [{ filename: '.env.local', patch: 'secret=do-not-send' }, { filename: 'src/app.ts', patch: 'x'.repeat(90000) }] })
   assert.equal(evidence.files.length, 1)
   assert.equal(evidence.files[0].truncated, true)
@@ -234,7 +238,7 @@ test('automatic sync updates a lesson and advances its cursor only after success
   let approve = true
   env.AI.run = (async (model: string, input: { messages?: unknown; response_format?: { type: string; json_schema: { properties: { lessons?: { maxItems: number } } } } }) => {
     if (input.messages) {
-      if (model === '@cf/openai/gpt-oss-120b') return { response: { approved: approve ? [generated.slug] : [] } }
+      if (model === '@cf/openai/gpt-oss-120b') return { response: { reviews: [{ slug: generated.slug, unsupportedClaims: approve ? [] : ['The new patch does not support this rewrite.'], approved: true }] } }
       assert.equal(input.response_format?.type, 'json_schema')
       assert.equal(input.response_format?.json_schema.properties.lessons?.maxItems, 3)
       if (fail) throw new Error('Temporary inference failure')

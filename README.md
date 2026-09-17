@@ -2,9 +2,19 @@
 
 [Open the knowledge base](https://engineering-notes.tianzezhao.com) · [Agent entry point](https://engineering-notes.tianzezhao.com/llms.txt)
 
-An English-only, searchable knowledge base distilled from real repository fixes. Each lesson explains a failure pattern, the behavior to preserve, the final solution, verification, applicability, and exact source commits.
+An English-only, searchable knowledge base distilled from real repository fixes. Lessons start with recognizable problems, then explain the source incident, diagnosis, unsuccessful approaches, improvements, verification, and rules for the next project. Exact source commits remain attached to the case study.
 
 The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Search combines SQLite FTS5 with multilingual semantic retrieval. Related lessons connect recurring concepts across repositories.
+
+The interface uses a classic documentation layout with a topic sidebar, article outline, and mobile navigation. It retains the Hono renderer and live D1 publishing rather than introducing a static-site rebuild for each article update.
+
+## Editorial format
+
+Lead with the problem a reader can recognize in another project. For example, "When a button feels slow: trace the wait" introduces a terminal-start incident without making terminal startup the entire lesson. Keep concrete implementation terms in the case and search tags.
+
+Articles follow this sequence: when to use the lesson, what happened, diagnosis and approach, what did not work, what changed, how to verify the improvement, what to do next time, limits, and commit evidence. Takeaways should connect a condition to a diagnostic check or action. Document a failed attempt only when the evidence supports it; otherwise state that none is recorded. Distinguish proposed checks and analogous examples from historical events, and never invent timings or test results.
+
+The optional `attempts` field keeps older stored documents readable. New extractions must supply it, including an explicit statement when unsuccessful attempts are undocumented. The generation prompt requests the same format. Evidence review lists unsupported claims and blocks those drafts before publication. Updating an existing lesson retains its slug, prior revisions, and exact commit references.
 
 ## Login and sharing
 

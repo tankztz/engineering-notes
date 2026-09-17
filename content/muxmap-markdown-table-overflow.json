@@ -1,7 +1,7 @@
 {
   "slug": "muxmap-markdown-table-overflow",
-  "title": "Give wide Markdown tables their own scroll region",
-  "summary": "A Markdown renderer can produce a valid table while the page layout still overflows. Contain horizontal scrolling at the table boundary so surrounding content and the viewport stay stable.",
+  "title": "When wide content makes the whole page scroll sideways",
+  "summary": "Content can render correctly and still break the surrounding layout. Find the element that needs extra width and contain scrolling there so nearby content remains stable and reachable.",
   "repo": "syntaxskills/muxmap",
   "category": "Content and files",
   "tags": [
@@ -13,13 +13,14 @@
     "accessibility"
   ],
   "triggers": [
-    "A wide table makes the entire page move horizontally.",
-    "Long URLs or unbroken identifiers force a Markdown preview beyond the viewport.",
-    "Table borders disappear into a light or dark theme."
+    "A table makes the entire page move sideways.",
+    "Long URLs or identifiers push a preview beyond the screen.",
+    "Offscreen columns are clipped or cannot be reached with a keyboard.",
+    "Table boundaries are difficult to see in one theme."
   ],
-  "invariant": "The page remains within the viewport. Each oversized table can scroll horizontally on its own, with the last column reachable and the heading position unchanged.",
-  "symptom": "Markdown previews used markdown-it, but wide tables expanded the page instead of scrolling independently. Table cell boundaries had also been difficult to see.",
-  "cause": "Parsing and layout are separate responsibilities. The renderer emitted a normal HTML table; the preview styles did not provide a constrained ancestor with horizontal overflow handling. Long cell contents exposed the missing containment.",
+  "invariant": "When one piece of content needs extra width, give it a local scroll region while keeping the page within the viewport. Preserve access to the last column by touch and keyboard. Verify both containment and readability; fixing borders does not establish that the layout is contained.",
+  "symptom": "MuxMap's Markdown preview rendered tables, but wide tables could expand the page rather than scroll independently. A separate earlier patch improved cell borders and header backgrounds.",
+  "cause": "Markdown parsing produced valid HTML; it did not determine where overflow should go. The preview lacked a constrained horizontal scroll region around each table.\n\nFor a similar layout problem, compare the page width with each oversized element and its ancestors. Check which element scrolls and whether the last column remains reachable. That separates a rendering failure from a containment problem.",
   "solution": "Wrap each rendered table in its own region with max-width: 100%, overflow-x: auto, and horizontal overscroll containment. Keep border-collapse on the table. Give the region a visible keyboard focus style and an accessible name so keyboard users can reach offscreen columns.\n\nAdd a mobile viewport meta tag and use explicit cell borders with sufficient contrast in both themes. Apply the wrapper in the shared table renderer so all Markdown tables follow the same rule.\n\n```css\n.table-scroll {\n  max-width: 100%;\n  overflow-x: auto;\n  overscroll-behavior-x: contain;\n}\n```",
   "verification": "Render a table with many columns, long unbroken text, and URLs. Check desktop and narrow mobile viewports in light and dark modes. Scroll to the last column and confirm window.scrollX stays zero, the heading does not move, and a second table retains its independent scroll position. Test keyboard scrolling and visible cell borders.",
   "limitations": "Use local overflow containment for content that genuinely needs width. Hiding all page overflow can conceal unreachable content and mask the underlying layout issue. A table wrapper does not fix unrelated wide elements such as code blocks or fixed-width headers.",
@@ -34,5 +35,6 @@
     }
   ],
   "status": "active",
-  "related": []
+  "related": [],
+  "attempts": "The earlier border patch, `c3c3852`, made cells easier to distinguish but did not add an overflow boundary. The later patch, `50b434a`, added the table wrapper and viewport metadata. They address different parts of usability.\n\nNo failed clipping experiment is documented. Hiding page overflow is an alternative to avoid when it merely cuts off columns rather than making them reachable."
 }
