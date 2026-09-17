@@ -1,9 +1,4 @@
-const narrowDocs = window.matchMedia('(max-width: 959px)');
-const docMenus = document.querySelectorAll('.docs-sidebar, .article-toc details');
-function setDocMenus() { docMenus.forEach(menu => { menu.open = !narrowDocs.matches; }); }
-setDocMenus();
-narrowDocs.addEventListener('change', setDocMenus);
-
+export function bindNotesInteractions() {
 document.querySelectorAll('form[role="search"]').forEach(form => {
   form.addEventListener('submit', () => {
     const button = form.querySelector('button');
@@ -56,3 +51,5 @@ sharing?.addEventListener('click', async event => {
   } catch (error) { status.textContent = error.message; }
   finally { buttons.forEach(button => { button.disabled = false; }); }
 });
+
+}

@@ -10,11 +10,11 @@ import { access, adminToken, hashToken, newToken, validToken, type AppEnv } from
 export const app = new Hono<AppEnv>()
 app.use('*', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff')
-  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://auth.syntaxskills.com")
+  c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://auth.syntaxskills.com")
   await next()
 })
 app.route('/', access)
-app.on('GET', ['/style.css', '/app.js', '/favicon.svg'], c => c.env.ASSETS.fetch(c.req.raw))
+app.on('GET', ['/assets/*', '/favicon.svg', '/vp-icons.css'], c => c.env.ASSETS.fetch(c.req.raw))
 app.use('/api/admin/*', bodyLimit({ maxSize: 200_000 }))
 app.use('/api/admin/*', async (c, next) => {
   if (!adminToken(c.req.raw, c.env)) return c.json({ error: 'Unauthorized' }, 401)

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { URL } from 'node:url'
 import { hashToken } from '../src/access.ts'
+import template from '../src/generated-template.ts'
 import { app } from '../src/index.ts'
 import { allLessons, lessonSchema, markdown, saveLessons, searchLessons, type Env, type Lesson } from '../src/knowledge.ts'
 import { evidenceText, syncSource, validateExtraction } from '../src/sync.ts'
@@ -83,6 +84,37 @@ test('published HTML, Markdown, agent discovery, search and failure paths work a
     assert.equal((await app.request('/api/search?q=', { headers: { authorization: 'Bearer test-secret' } }, env)).status, 400)
     assert.equal((await app.request('/api/admin/status', {}, env)).status, 401)
     assert.equal((await app.request('/lessons/missing', { headers: { authorization: 'Bearer test-secret' } }, env)).status, 404)
+  } finally { sqlite.close() }
+})
+
+test('VitePress receives current D1 content as inert page data, with no lessons in static assets', async () => {
+  const { sqlite, DB } = database()
+  const env = environment(DB)
+  const title = 'Escaping </script><script>alert(1)</script> & {{ 7 * 7 }}'
+  const lesson = { ...sample, slug: 'runtime-only-lesson', title }
+  try {
+    await saveLessons(env, [lesson])
+    const response = await app.request(`/lessons/${lesson.slug}`, { headers: { authorization: 'Bearer test-secret' } }, env)
+    const document = await response.text()
+    assert.match(document, /name="generator" content="VitePress v1\.6\.4"/)
+    const encoded = document.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1]
+    assert.doesNotMatch(encoded, /[<>]/)
+    const page = JSON.parse(encoded)
+    assert.equal(page.title, title)
+    assert.ok(page.content.includes('&lt;/script&gt;'))
+    assert.ok(page.content.includes('{{ 7 * 7 }}'))
+    assert.doesNotMatch(document, /<script>alert/)
+    const nav = page.sidebar.flatMap((group: { items?: { text: string }[] }) => group.items ?? [])
+    assert.ok(nav.some((item: { text: string }) => item.text.includes('&lt;/script&gt;')))
+    await saveLessons(env, [{ ...lesson, summary: 'Updated after the VitePress build.' }])
+    assert.match(await (await app.request(`/lessons/${lesson.slug}`, { headers: { authorization: 'Bearer test-secret' } }, env)).text(), /Updated after the VitePress build/)
+    assert.doesNotMatch(template, /notes-page|runtime-only-lesson/)
+    const assets = new URL('../docs/.vitepress/dist/assets/', import.meta.url)
+    for (const file of readdirSync(assets, { recursive: true }).filter(file => /\.(js|css)$/.test(String(file)))) {
+      const data = readFileSync(new URL(String(file), assets), 'utf8')
+      for (const seed of seeds) assert.ok(!data.includes(seed.title), `Private title in static asset: ${file}`)
+      assert.ok(!data.includes('test-secret'))
+    }
   } finally { sqlite.close() }
 })
 
@@ -178,6 +210,9 @@ test('SyntaxSkills login gates every collection route and share links grant only
     assert.equal(sharedResponse.headers.get('referrer-policy'), 'no-referrer')
     assert.match(sharedResponse.headers.get('x-robots-tag')!, /noindex/)
     const sharedHtml = await sharedResponse.text()
+    const sharedPage = JSON.parse(sharedHtml.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1])
+    assert.deepEqual(sharedPage.sidebar, [])
+    assert.equal(sharedPage.shared, true)
     assert.match(sharedHtml, /Access to this page only/)
     assert.ok(sharedHtml.includes(sample.title))
     assert.ok(sharedHtml.includes(`${shared.pathname}.md`))

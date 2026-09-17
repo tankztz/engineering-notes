@@ -37,7 +37,7 @@ access.use('*', async (c, next) => {
   if (c.env.SITE_URL && url.origin !== c.env.SITE_URL && !['localhost', '127.0.0.1'].includes(url.hostname)) {
     return c.redirect(c.env.SITE_URL + url.pathname + url.search, 308)
   }
-  if (['/style.css', '/app.js', '/favicon.svg', '/robots.txt'].includes(path) || path.startsWith('/auth/') || path.startsWith('/share/') || path.startsWith('/api/admin/')) return next()
+  if (path.startsWith('/assets/') || ['/favicon.svg', '/vp-icons.css', '/robots.txt'].includes(path) || path.startsWith('/auth/') || path.startsWith('/share/') || path.startsWith('/api/admin/')) return next()
   if (adminToken(c.req.raw, c.env)) {
     c.set('isAdmin', true)
     c.set('userId', 'admin')

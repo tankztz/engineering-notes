@@ -6,7 +6,7 @@ An English-only, searchable knowledge base distilled from real repository fixes.
 
 The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Search combines SQLite FTS5 with multilingual semantic retrieval. Related lessons connect recurring concepts across repositories.
 
-The interface uses a classic documentation layout with a topic sidebar, article outline, and mobile navigation. It retains the Hono renderer and live D1 publishing rather than introducing a static-site rebuild for each article update.
+The interface runs VitePress 1.6.4 with its default documentation theme, topic sidebar, article outline, mobile navigation, and persistent light/dark appearance. The Worker checks access and supplies the current D1 page as escaped JSON. VitePress renders that content through its runtime route API. Cross-page links use full document navigation so every visit rechecks access and reads the latest revision; new lessons need no frontend rebuild. Markdown and a no-JavaScript reading fallback remain available.
 
 ## Editorial format
 
@@ -73,6 +73,10 @@ npm run build
 npx wrangler d1 migrations apply engineering-notes --local
 npm run dev
 ```
+
+`npm run docs:build` builds the VitePress application and generates the Worker HTML template. Tests, builds, development, and direct Wrangler deployment run this automatically. Generated files stay out of Git. VitePress is used as a build tool; `npm run dev` serves the Worker with Wrangler, not a Vite development server.
+
+Static assets contain only the application and theme, never D1 documents, navigation titles, share tokens, or credentials. Bootstrap scripts are external files to preserve the script CSP. Live Markdown is rendered as inert HTML, never compiled as Vue code.
 
 Tests use real SQLite/FTS5 and stub external services. They cover the English format, rendered routes, retrieval fallback, authentication, citation validation, document preservation on failure, revisions, and automatic cursor advancement. Semantic relevance and actual model output also need live verification after changes to the prompt or embedding model.
 

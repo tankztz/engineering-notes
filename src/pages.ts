@@ -1,31 +1,37 @@
 import { html, raw } from 'hono/html'
 import MarkdownIt from 'markdown-it'
 import { lessonSections, type Source, type StoredLesson } from './knowledge.ts'
+import template from './generated-template.ts'
 
 const renderer = new MarkdownIt({ html: false, linkify: true, typographer: true })
 renderer.renderer.rules.table_open = () => '<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table>'
 renderer.renderer.rules.table_close = () => '</table></div>'
 
-export function shell(title: string, description: string, content: unknown, path = '/', origin = '', query = '', shared = false, lessons: StoredLesson[] = []) {
-  return html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Engineering Notes</title><meta name="description" content="${description}"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:type" content="article"><meta property="og:url" content="${origin}${path}"><link rel="canonical" href="${origin}${path}">${shared ? '' : html`<link rel="describedby" href="/llms.txt">`}${(path.startsWith('/lessons/') || shared) ? html`<link rel="alternate" type="text/markdown" href="${path}.md">` : ''}<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head><body>
-  <a class="skip" href="#main">Skip to content</a><header class="site-header"><a class="brand" href="${shared ? path : '/'}"><span class="brand-mark" aria-hidden="true">N</span><span>Engineering Notes<small>Lessons from real code</small></span></a>${shared ? html`<p class="shared-label">Shared lesson · Access to this page only</p>` : html`<nav aria-label="Main navigation"><a href="/">All lessons</a><a href="/agents">For agents</a><a href="/status">Updates</a><form action="/auth/logout" method="post"><button type="submit" class="text-button">Sign out</button></form></nav><form class="header-search" action="/search" role="search"><label class="sr-only" for="header-query">Search engineering lessons</label><input id="header-query" name="q" type="search" placeholder="Search symptoms or concepts…" value="${query}" maxlength="240" required><button type="submit">Search</button></form>`}</header>
-  <div class="docs-layout ${shared ? 'shared-layout' : ''}">${shared ? '' : navigation(lessons, path)}<main id="main">${content}</main></div><footer class="site-footer"><span>Lessons to bring into your next project.</span>${shared ? '' : html`<div><a href="/llms.txt">llms.txt</a><a href="/api/index.json">JSON index</a><a href="/api/export">Export documents</a><a href="https://github.com/tankztz/engineering-notes">Source code</a></div>`}</footer></body></html>`
+export async function shell(title: string, description: string, content: unknown, path = '/', origin = '', query = '', shared = false, lessons: StoredLesson[] = []) {
+  const active = shared ? [] : lessons.filter(lesson => lesson.status === 'active')
+  const sidebar = shared ? [] : [
+    { text: 'All lessons', link: '/' },
+    ...[...new Set(active.map(lesson => lesson.category))].sort().map(category => ({
+      text: category, collapsed: false,
+      items: active.filter(lesson => lesson.category === category).sort((a, b) => a.title.localeCompare(b.title)).map(lesson => ({ text: String(html`${lesson.title}`), link: `/lessons/${lesson.slug}` })),
+    })),
+  ]
+  const body = String(await content)
+  const page = { title, description, content: body, path, query, shared, sidebar, article: shared || path.startsWith('/lessons/') }
+  // D1 content is data, never executable Vue/JavaScript. Escape script delimiters even inside Markdown.
+  const serialized = JSON.stringify(page).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+  const head = await html`<meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:type" content="article"><meta property="og:url" content="${origin}${path}"><link rel="canonical" href="${origin}${path}">${shared ? '' : html`<link rel="describedby" href="/llms.txt">`}${page.article ? html`<link rel="alternate" type="text/markdown" href="${path}.md">` : ''}`
+  const titleTag = await html`<title>${title} · Engineering Notes</title>`
+  const descriptionTag = await html`<meta name="description" content="${description}">`
+  const fallback = await html`<noscript><style>.notes-starting { display: none }</style><main class="vp-doc notes-fallback">${shared ? html`<p>Shared lesson · Access to this page only</p>` : ''}${raw(body)}</main></noscript>`
+  return raw(template.replace(/<title>[^<]*<\/title>/, () => String(titleTag))
+    .replace(/<meta name="description" content="[^"]*">/, () => String(descriptionTag))
+    .replace('</head>', () => `${head}</head>`)
+    .replace('</body>', () => `<script id="notes-page" type="application/json">${serialized}</script>${fallback}</body>`))
 }
 
 export function lessonList(lessons: StoredLesson[]) {
   return html`<div class="lesson-list">${lessons.map(lesson => html`<article class="lesson-row"><div class="lesson-meta"><span>${lesson.category}</span><span>${lesson.repo.split('/').at(-1)}</span></div><a class="lesson-title" href="/lessons/${lesson.slug}">${lesson.title}</a><p>${lesson.summary}</p><div class="lesson-bottom"><div class="tags">${lesson.tags.slice(0, 4).map(tag => html`<a href="/search?q=${encodeURIComponent(tag)}">${tag}</a>`)}</div><span class="evidence-count">${lesson.commits.length} ${lesson.commits.length === 1 ? 'commit' : 'commits'} · ${lesson.updatedAt.slice(0, 10)}</span></div></article>`)}</div>`
-}
-
-function navigation(lessons: StoredLesson[], path: string) {
-  const active = lessons.filter(lesson => lesson.status === 'active')
-  const categories = [...new Set(active.map(lesson => lesson.category))].sort()
-  return html`<details class="docs-sidebar" open><summary>Browse lessons</summary><nav aria-label="Lesson navigation">
-    <a class="sidebar-home" href="/" aria-current="${path === '/' ? 'page' : undefined}">All lessons</a>
-    ${categories.map(category => html`<section class="sidebar-group"><a class="sidebar-category" href="/?category=${encodeURIComponent(category)}">${category}</a>
-      ${active.filter(lesson => lesson.category === category).sort((a, b) => a.title.localeCompare(b.title)).map(lesson => html`<a class="sidebar-lesson" href="/lessons/${lesson.slug}" aria-current="${path === `/lessons/${lesson.slug}` ? 'page' : undefined}">${lesson.title}</a>`)}
-    </section>`)}
-    <div class="sidebar-tools"><a href="/agents" aria-current="${path === '/agents' ? 'page' : undefined}">For agents</a><a href="/status" aria-current="${path === '/status' ? 'page' : undefined}">Updates</a></div>
-  </nav></details>`
 }
 
 export function home(lessons: StoredLesson[], category?: string, repo?: string) {
@@ -51,8 +57,7 @@ export function article(lesson: StoredLesson, related: StoredLesson[], sharedPat
     return self.renderToken(tokens, index, options)
   }
   const body = sections.map(([heading, text]) => `## ${heading}\n\n${text}`).join('\n\n')
-  const outline = html`<aside class="article-toc"><details open><summary>On this page</summary><nav aria-label="Article contents">${sections.map(([section]) => html`<a href="#${section.toLowerCase().replaceAll(' ', '-')}">${section}</a>`)}</nav></details></aside>`
-  return html`<div class="article-layout"><article class="article"><header class="article-header"><div class="lesson-meta">${sharedPath ? html`<span>${lesson.category}</span>` : html`<a href="/?category=${encodeURIComponent(lesson.category)}">${lesson.category}</a>`}<a href="https://github.com/${lesson.repo}">${lesson.repo}</a></div><h1>${lesson.title}</h1><p class="lead">${lesson.summary}</p><div class="article-actions"><a href="${sharedPath || `/lessons/${lesson.slug}`}.md">Read Markdown</a>${sharedPath ? html`<button type="button" data-copy-link>Copy share link</button><span role="status" data-copy-status></span>` : ''}<span class="updated">Updated ${lesson.updatedAt.slice(0, 10)}</span></div>${!sharedPath ? html`<details class="share-controls" data-share-slug="${lesson.slug}"><summary>Share this lesson</summary><p>Anyone with your link can read this lesson only. Creating a new link replaces your previous link for this lesson.</p><div class="article-actions"><button type="button" data-create-share>Create share link</button><button type="button" data-revoke-share>Revoke my share link</button></div><label class="share-result" hidden>Shareable link<input type="text" readonly data-share-url></label><p role="status" data-share-status></p></details>` : ''}${lesson.status === 'superseded' ? html`<p class="notice">This lesson has been superseded.${lesson.supersededBy ? html`<a href="/lessons/${lesson.supersededBy}">Read the current approach →</a>` : ''}</p>` : ''}</header><div class="prose">${raw(renderer.render(body))}</div><p class="article-provenance">Based on the linked commits. Verification describes checks to perform, not a claim that tests were executed. Confirm applicability in your own project.</p>${related.length ? html`<section class="related"><h2>Related lessons</h2>${related.map(item => html`<a href="/lessons/${item.slug}">${item.title}<span>→</span></a>`)}</section>` : ''}</article>${outline}</div>`
+  return html`<article class="article"><header class="article-header"><div class="lesson-meta">${sharedPath ? html`<span>${lesson.category}</span>` : html`<a href="/?category=${encodeURIComponent(lesson.category)}">${lesson.category}</a>`}<a href="https://github.com/${lesson.repo}">${lesson.repo}</a></div><h1>${lesson.title}</h1><p class="lead">${lesson.summary}</p><div class="article-actions"><a href="${sharedPath || `/lessons/${lesson.slug}`}.md">Read Markdown</a>${sharedPath ? html`<button type="button" data-copy-link>Copy share link</button><span role="status" data-copy-status></span>` : ''}<span class="updated">Updated ${lesson.updatedAt.slice(0, 10)}</span></div>${!sharedPath ? html`<details class="share-controls" data-share-slug="${lesson.slug}"><summary>Share this lesson</summary><p>Anyone with your link can read this lesson only. Creating a new link replaces your previous link for this lesson.</p><div class="article-actions"><button type="button" data-create-share>Create share link</button><button type="button" data-revoke-share>Revoke my share link</button></div><label class="share-result" hidden>Shareable link<input type="text" readonly data-share-url></label><p role="status" data-share-status></p></details>` : ''}${lesson.status === 'superseded' ? html`<p class="notice">This lesson has been superseded.${lesson.supersededBy ? html`<a href="/lessons/${lesson.supersededBy}">Read the current approach →</a>` : ''}</p>` : ''}</header><div class="prose">${raw(renderer.render(body))}</div><p class="article-provenance">Based on the linked commits. Verification describes checks to perform, not a claim that tests were executed. Confirm applicability in your own project.</p>${related.length ? html`<section class="related"><h2>Related lessons</h2>${related.map(item => html`<a href="/lessons/${item.slug}">${item.title}<span>→</span></a>`)}</section>` : ''}</article>`
 }
 
 export function searchPage(query: string, lessons: StoredLesson[], mode: string) {

@@ -5,3 +5,6 @@ dist/
 .env*
 exports/
 test-results/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+src/generated-template.ts
