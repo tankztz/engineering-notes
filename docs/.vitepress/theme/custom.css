@@ -65,3 +65,4 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   .article-actions .updated { margin-left: 0; }
 }
 @media (max-width: 380px) { .VPNavBarTitle .title { font-size: 14px; } .header-search input { width: 86px; padding: 6px; } }
+@media (max-width: 359px) { .VPNavBarTitle .logo { display: none; } }

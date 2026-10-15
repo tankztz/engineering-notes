@@ -1,0 +1,45 @@
+.lesson-demo { margin: 32px 0; }
+.vp-doc .lesson-demo h2 { margin-bottom: 16px; }
+.demo-intro, .demo-caption { color: var(--vp-c-text-2); font-size: 13px; line-height: 1.7; }
+.demo-toolbar, .demo-actions, .demo-modes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.demo-toolbar { justify-content: space-between; margin: 20px 0 12px; }
+.lesson-demo button { border: 1px solid var(--vp-c-divider); border-radius: 6px; padding: 7px 12px; background: var(--vp-c-bg); color: var(--vp-c-text-1); font-size: 13px; font-weight: 500; }
+.lesson-demo button:hover:not(:disabled) { border-color: var(--vp-c-brand-1); }
+.lesson-demo button[aria-pressed="true"] { background: var(--vp-c-brand-3); color: #fff; border-color: var(--vp-c-brand-3); }
+.lesson-demo button:disabled { cursor: default; }
+.demo-stage { padding: 20px; border: 1px solid var(--vp-c-divider); border-radius: 8px; background: var(--vp-c-bg-soft); min-width: 0; }
+.vp-doc .demo-rule { margin-top: 0; font-weight: 600; font-size: 14px; }
+.vp-doc .demo-stage p { line-height: 1.7; }
+.demo-stage [role="status"] { font-size: 13px; font-weight: 500; }
+.vp-doc .demo-log { border-top: 1px solid var(--vp-c-divider); margin: 16px 0 0; padding: 12px 0 0 20px; font-size: 12px; color: var(--vp-c-text-2); }
+.demo-log:empty { display: none; }
+.demo-stage label { display: block; font-size: 13px; }
+.demo-terminal input { display: block; width: 100%; min-width: 0; border: 1px solid var(--vp-c-divider); border-radius: 4px; margin-top: 8px; padding: 8px; background: var(--vp-c-bg); font-size: 16px; }
+.demo-terminal input:disabled { opacity: .6; cursor: not-allowed; }
+.demo-stage input[type="range"] { width: 100%; margin: 16px 0; accent-color: var(--vp-c-brand-1); }
+.demo-hover-field { position: relative; height: 120px; border: 1px dashed var(--vp-c-divider); margin-bottom: 16px; }
+.demo-hover-card { position: absolute; top: 12px; height: 64px; border: 1px solid var(--vp-c-brand-1); border-radius: 6px; background: var(--vp-c-brand-soft); display: grid; place-items: center; font-size: 12px; }
+.demo-pointer { position: absolute; top: 78px; transform: translateX(-50%); font-size: 24px; line-height: 1; }
+.demo-canvas { border: 1px dashed var(--vp-c-divider); padding: 12px; }
+.demo-outside { width: 100%; }
+.demo-panel-slot { min-height: 106px; padding-top: 12px; }
+.demo-selected-panel { padding: 16px; border: 1px solid var(--vp-c-brand-1); background: var(--vp-c-brand-soft); border-radius: 6px; font-size: 14px; }
+.demo-viewport { width: 360px; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; background: var(--vp-c-bg); border: 1px solid var(--vp-c-divider); margin: 16px 0; }
+.demo-sample-page { padding: 16px; min-width: 0; font-size: 13px; }
+.demo-page-wide { width: 652px; }
+.demo-local-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.vp-doc table.demo-wide-table { display: table; width: 620px; margin: 0; white-space: nowrap; }
+.vp-doc .demo-wide-table th, .vp-doc .demo-wide-table td { font-size: 12px; padding: 8px; }
+.demo-stage .demo-check { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.demo-check input { width: 18px; height: 18px; accent-color: var(--vp-c-brand-1); flex-shrink: 0; }
+.demo-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.demo-comparison > div { border: 1px solid var(--vp-c-divider); padding: 12px; border-radius: 6px; background: var(--vp-c-bg); font-size: 13px; }
+.vp-doc .demo-comparison h3 { margin: 0; font-size: 14px; }
+.vp-doc .demo-comparison ul { padding-left: 16px; margin-bottom: 0; }
+.demo-phone { width: 250px; max-width: 100%; height: 224px; overflow: hidden; border: 2px solid var(--vp-c-divider); border-radius: 16px; background: var(--vp-c-bg); margin: 16px auto; }
+.demo-phone-page { padding: 20px; transform-origin: 50% 50%; font-size: 13px; }
+.demo-fake-input { border: 1px solid var(--vp-c-divider); border-radius: 4px; padding: 8px; }
+.demo-fake-input.focused { outline: 2px solid var(--vp-c-brand-1); }
+.lesson-demo details { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--vp-c-divider); border-radius: 6px; font-size: 14px; }
+.lesson-demo summary { color: var(--vp-c-brand-1); font-weight: 500; }
+@media (max-width: 480px) { .demo-stage { padding: 14px; } .demo-comparison { grid-template-columns: 1fr; } }

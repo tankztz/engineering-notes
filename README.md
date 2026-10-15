@@ -8,6 +8,8 @@ The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Se
 
 The interface runs VitePress 1.6.4 with its default documentation theme, topic sidebar, article outline, mobile navigation, and persistent light/dark appearance. The Worker checks access and supplies the current D1 page as escaped JSON. VitePress renders that content through its runtime route API. Cross-page links use full document navigation so every visit rechecks access and reads the latest revision; new lessons need no frontend rebuild. Markdown and a no-JavaScript reading fallback remain available.
 
+Every lesson has a **Try it** section. The seven current topics have interactive problem/fix illustrations with reset controls, visible state, and keyboard/touch controls. These use sample data and simulated timing; they do not execute terminal commands, send notifications, or reproduce native iPhone behavior. Shared article links include the same example. New topics automatically get a step-by-step reveal exercise using their current D1 diagnosis, previous approach, improvement, and verification. Add a reviewed component under `docs/.vitepress/theme/demos/` and a mapping in `src/demos.ts` for a custom illustration. Stored article text is never compiled or executed as demo code.
+
 ## Editorial format
 
 Lead with the problem a reader can recognize in another project. For example, "When a button feels slow: trace the wait" introduces a terminal-start incident without making terminal startup the entire lesson. Keep concrete implementation terms in the case and search tags.

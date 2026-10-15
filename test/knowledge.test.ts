@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { URL } from 'node:url'
 import { hashToken } from '../src/access.ts'
+import { lessonDemos } from '../src/demos.ts'
 import template from '../src/generated-template.ts'
 import { app } from '../src/index.ts'
 import { allLessons, lessonSchema, markdown, saveLessons, searchLessons, type Env, type Lesson } from '../src/knowledge.ts'
@@ -118,6 +119,34 @@ test('VitePress receives current D1 content as inert page data, with no lessons 
   } finally { sqlite.close() }
 })
 
+test('every curated example is served only inside its article and new topics get a safe live exercise', async () => {
+  const { sqlite, DB } = database()
+  const env = environment(DB)
+  const headers = { authorization: 'Bearer test-secret' }
+  try {
+    await saveLessons(env, Object.keys(lessonDemos).map(slug => ({ ...sample, slug })))
+    for (const [slug, kind] of Object.entries(lessonDemos)) {
+      const response = await app.request(`/lessons/${slug}`, { headers }, env)
+      const document = await response.text()
+      const page = JSON.parse(document.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1])
+      assert.ok(page.content.includes(`data-lesson-demo="${kind}"`), slug)
+      assert.equal((page.content.match(/data-lesson-demo=/g) ?? []).length, 1)
+      assert.ok(page.content.includes('not a replay or benchmark'))
+      const guest = await app.request(`/lessons/${slug}`, {}, env)
+      assert.doesNotMatch(await guest.text(), /data-lesson-demo/)
+    }
+    const added = { ...sample, slug: 'new-topic', cause: '<script>alert(1)</script>', solution: 'New solution from current D1.' }
+    await saveLessons(env, [added])
+    const document = await (await app.request('/lessons/new-topic', { headers }, env)).text()
+    const page = JSON.parse(document.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1])
+    assert.match(page.content, /Try it: reason through the fix/)
+    assert.match(page.content, /&lt;script&gt;alert/)
+    assert.match(page.content, /New solution from current D1/)
+    assert.doesNotMatch(page.content, /data-lesson-demo|<script>/)
+    assert.equal((page.content.match(/<summary>[1-4]\./g) ?? []).length, 4)
+  } finally { sqlite.close() }
+})
+
 test('failed indexing preserves the previous document; successful revisions retain history', async () => {
   const { sqlite, DB } = database()
   const env = environment(DB)
@@ -213,6 +242,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
     const sharedPage = JSON.parse(sharedHtml.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1])
     assert.deepEqual(sharedPage.sidebar, [])
     assert.equal(sharedPage.shared, true)
+    assert.match(sharedPage.content, /data-lesson-demo="hover"/)
     assert.match(sharedHtml, /Access to this page only/)
     assert.ok(sharedHtml.includes(sample.title))
     assert.ok(sharedHtml.includes(`${shared.pathname}.md`))

@@ -1,7 +1,8 @@
-import { defineComponent, h, markRaw, onMounted } from 'vue'
+import { createApp, defineComponent, h, markRaw, onMounted, onUnmounted } from 'vue'
 import DefaultTheme from 'vitepress/theme'
 import Layout from './Layout.vue'
 import { bindNotesInteractions } from './interactions.js'
+import LessonDemo from './demos/LessonDemo.vue'
 import './custom.css'
 
 export default {
@@ -42,12 +43,19 @@ export default {
       }
       router.route.component = markRaw(defineComponent({
         setup() {
+          let demo
           onMounted(() => {
             bindNotesInteractions()
+            const target = document.querySelector('[data-lesson-demo]')
+            if (target) {
+              demo = createApp(LessonDemo, { kind: target.dataset.lessonDemo })
+              demo.mount(target)
+            }
             if (location.hash) requestAnimationFrame(() => {
               try { document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView() } catch { /* An invalid fragment has no target. */ }
             })
           })
+          onUnmounted(() => demo?.unmount())
           return () => h('div', { class: 'notes-content', innerHTML: page.content })
         },
       }))
