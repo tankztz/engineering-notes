@@ -164,6 +164,53 @@ test('failed indexing preserves the previous document; successful revisions reta
   } finally { sqlite.close() }
 })
 
+test('UI patterns retain structured prompts, safe sources, curated samples and revocable sharing', async () => {
+  const { sqlite, DB } = database()
+  const env = environment(DB)
+  const headers = { authorization: 'Bearer test-secret' }
+  const pattern = lessonSchema.parse({ ...sample, slug: 'ui-pattern-test', title: 'A reusable UI',
+    ui: {
+      sources: [{ label: 'Design reference', url: 'https://example.com/design', note: 'Inspiration, not an application template.' }],
+      prompt: 'Use Impeccable. Render </textarea><script>alert(1)</script> as text.',
+      demo: 'monochrome-paper',
+    },
+  })
+  const pageData = (document: string) => JSON.parse(document.match(/<script id="notes-page" type="application\/json">([\s\S]*?)<\/script>/)![1])
+  try {
+    assert.throws(() => lessonSchema.parse({ ...pattern, ui: { ...pattern.ui, demo: '<script>' } }))
+    assert.throws(() => lessonSchema.parse({ ...pattern, ui: { ...pattern.ui, sources: [{ label: 'Unsafe', url: 'javascript:alert(1)', note: 'Bad link' }] } }))
+    await saveLessons(env, [{ ...sample, slug: pattern.slug }])
+    await saveLessons(env, [pattern])
+    assert.equal(sqlite.prepare('SELECT count(*) AS count FROM revisions WHERE slug=?').get(pattern.slug)!.count, 1)
+    const document = await (await app.request(`/lessons/${pattern.slug}`, { headers }, env)).text()
+    const page = pageData(document)
+    assert.equal(page.pattern, true)
+    assert.match(page.content, /data-ui-demo="monochrome-paper"/)
+    assert.match(page.content, /Copy prompt|Design reference/)
+    assert.match(page.content, /&lt;\/textarea&gt;&lt;script&gt;/)
+    assert.doesNotMatch(page.content, /Try it:|What happened|data-lesson-demo|<script>/)
+    const md = markdown(pattern)
+    assert.match(md, /## Source[\s\S]*## Prompt[\s\S]*## Interactive sample/)
+    assert.doesNotMatch(md, /## What happened/)
+    const gallery = pageData(await (await app.request('/ui', { headers }, env)).text())
+    assert.match(gallery.content, /A reusable UI/)
+    assert.equal((await app.request('/ui', {}, env)).status, 302)
+    assert.equal((await searchLessons(env, 'Impeccable')).results[0].slug, pattern.slug)
+    const response = await app.request(`/api/lessons/${pattern.slug}/share`, { method: 'POST', headers }, env)
+    assert.equal(response.status, 201)
+    const share = new URL((await response.json() as { url: string }).url).pathname
+    const shared = pageData(await (await app.request(share, {}, env)).text())
+    assert.equal(shared.shared, true)
+    assert.deepEqual(shared.sidebar, [])
+    assert.match(shared.content, /data-ui-demo="monochrome-paper"/)
+    assert.doesNotMatch(shared.content, /href="\/ui"|data-share-slug/)
+    const sharedMarkdown = await (await app.request(share + '.md', {}, env)).text()
+    assert.equal(sharedMarkdown, md)
+    await app.request(`/api/lessons/${pattern.slug}/share`, { method: 'DELETE', headers }, env)
+    assert.equal((await app.request(share, {}, env)).status, 404)
+  } finally { sqlite.close() }
+})
+
 test('SyntaxSkills login gates every collection route and share links grant only one revocable article', async t => {
   const { sqlite, DB } = database()
   const env = environment(DB)

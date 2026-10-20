@@ -15,6 +15,11 @@ export const lessonSchema = z.object({
   status: z.enum(['active', 'superseded']).default('active'),
   supersededBy: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
   related: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).max(8).default([]),
+  ui: z.object({
+    sources: z.array(z.object({ label: text.max(120), url: z.string().url().startsWith('https://'), note: text.max(500) }).strict()).min(1).max(6),
+    prompt: text,
+    demo: z.enum(['monochrome-paper']),
+  }).strict().optional(),
 }).strict().refine(lesson => !/\p{Script=Han}/u.test(JSON.stringify(lesson)), 'All lesson content must be in English')
 export type Lesson = z.infer<typeof lessonSchema>
 export type StoredLesson = Lesson & { updatedAt: string }
@@ -24,6 +29,11 @@ export const EMBEDDING_MODEL = '@cf/baai/bge-m3'
 export const GENERATION_MODEL = '@cf/qwen/qwen3-30b-a3b-fp8'
 
 export function lessonSections(lesson: Lesson) {
+  if (lesson.ui) return [
+    ['Source', lesson.ui.sources.map(source => `- [${source.label}](${source.url}): ${source.note}`).join('\n')],
+    ['Prompt', lesson.ui.prompt],
+    ['Interactive sample', 'Open the browser version of this page to explore the sample. It uses fictional content, with mouse, touch and keyboard controls.'],
+  ]
   return [
     ['When to use this lesson', lesson.triggers.map(t => `- ${t}`).join('\n')],
     ['What happened', lesson.symptom],
@@ -42,7 +52,7 @@ export function markdown(lesson: Lesson) {
 }
 
 export function searchText(lesson: Lesson) {
-  return [lesson.title, lesson.summary, ...lesson.tags, ...lesson.triggers, lesson.invariant, lesson.symptom, lesson.cause, lesson.attempts, lesson.solution, lesson.verification, lesson.limitations].filter(Boolean).join('\n')
+  return [lesson.title, lesson.summary, ...lesson.tags, ...lesson.triggers, lesson.invariant, lesson.symptom, lesson.cause, lesson.attempts, lesson.solution, lesson.verification, lesson.limitations, lesson.ui?.prompt, ...lesson.ui?.sources.map(source => `${source.label} ${source.note}`) ?? []].filter(Boolean).join('\n')
 }
 
 export function searchTokens(query: string) {

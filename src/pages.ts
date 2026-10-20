@@ -2,6 +2,7 @@ import { html, raw } from 'hono/html'
 import MarkdownIt from 'markdown-it'
 import { lessonSections, type Source, type StoredLesson } from './knowledge.ts'
 import { lessonDemo } from './demos.ts'
+import { patternContent } from './patterns.ts'
 import template from './generated-template.ts'
 
 const renderer = new MarkdownIt({ html: false, linkify: true, typographer: true })
@@ -12,13 +13,14 @@ export async function shell(title: string, description: string, content: unknown
   const active = shared ? [] : lessons.filter(lesson => lesson.status === 'active')
   const sidebar = shared ? [] : [
     { text: 'All lessons', link: '/' },
-    ...[...new Set(active.map(lesson => lesson.category))].sort().map(category => ({
+    { text: 'UI patterns', link: '/ui', items: active.filter(lesson => lesson.ui).map(lesson => ({ text: String(html`${lesson.title}`), link: `/lessons/${lesson.slug}` })) },
+    ...[...new Set(active.filter(lesson => !lesson.ui).map(lesson => lesson.category))].sort().map(category => ({
       text: category, collapsed: false,
-      items: active.filter(lesson => lesson.category === category).sort((a, b) => a.title.localeCompare(b.title)).map(lesson => ({ text: String(html`${lesson.title}`), link: `/lessons/${lesson.slug}` })),
+      items: active.filter(lesson => !lesson.ui && lesson.category === category).sort((a, b) => a.title.localeCompare(b.title)).map(lesson => ({ text: String(html`${lesson.title}`), link: `/lessons/${lesson.slug}` })),
     })),
   ]
   const body = String(await content)
-  const page = { title, description, content: body, path, query, shared, sidebar, article: shared || path.startsWith('/lessons/') }
+  const page = { title, description, content: body, path, query, shared, sidebar, article: shared || path.startsWith('/lessons/'), pattern: body.includes('data-ui-demo=') }
   // D1 content is data, never executable Vue/JavaScript. Escape script delimiters even inside Markdown.
   const serialized = JSON.stringify(page).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
   const head = await html`<meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:type" content="article"><meta property="og:url" content="${origin}${path}"><link rel="canonical" href="${origin}${path}">${shared ? '' : html`<link rel="describedby" href="/llms.txt">`}${page.article ? html`<link rel="alternate" type="text/markdown" href="${path}.md">` : ''}`
@@ -32,11 +34,11 @@ export async function shell(title: string, description: string, content: unknown
 }
 
 export function lessonList(lessons: StoredLesson[]) {
-  return html`<div class="lesson-list">${lessons.map(lesson => html`<article class="lesson-row"><div class="lesson-meta"><span>${lesson.category}</span><span>${lesson.repo.split('/').at(-1)}</span></div><a class="lesson-title" href="/lessons/${lesson.slug}">${lesson.title}</a><p>${lesson.summary}</p><div class="lesson-bottom"><div class="tags">${lesson.tags.slice(0, 4).map(tag => html`<a href="/search?q=${encodeURIComponent(tag)}">${tag}</a>`)}</div><span class="evidence-count">${lesson.commits.length} ${lesson.commits.length === 1 ? 'commit' : 'commits'} · ${lesson.updatedAt.slice(0, 10)}</span></div></article>`)}</div>`
+  return html`<div class="lesson-list">${lessons.map(lesson => html`<article class="lesson-row"><div class="lesson-meta"><span>${lesson.ui ? 'UI pattern' : lesson.category}</span><span>${lesson.repo.split('/').at(-1)}</span></div><a class="lesson-title" href="/lessons/${lesson.slug}">${lesson.title}</a><p>${lesson.summary}</p><div class="lesson-bottom"><div class="tags">${lesson.tags.slice(0, 4).map(tag => html`<a href="/search?q=${encodeURIComponent(tag)}">${tag}</a>`)}</div><span class="evidence-count">${lesson.commits.length} ${lesson.commits.length === 1 ? 'commit' : 'commits'} · ${lesson.updatedAt.slice(0, 10)}</span></div></article>`)}</div>`
 }
 
 export function home(lessons: StoredLesson[], category?: string, repo?: string) {
-  const active = lessons.filter(lesson => lesson.status === 'active')
+  const active = lessons.filter(lesson => lesson.status === 'active' && !lesson.ui)
   const repos = [...new Set(active.map(lesson => lesson.repo))]
   const visible = active.filter(lesson => (!category || lesson.category === category) && (!repo || lesson.repo === repo))
   return html`<div class="library-content"><header class="intro"><h1>${category ?? (repo ? repo.split('/').at(-1) : 'Engineering Notes')}</h1><p class="lead">Diagnose recurring problems through real fixes, failed approaches, and rules you can apply in your next project.</p></header>
@@ -58,7 +60,7 @@ export function article(lesson: StoredLesson, related: StoredLesson[], sharedPat
     return self.renderToken(tokens, index, options)
   }
   const body = sections.map(([heading, text]) => `## ${heading}\n\n${text}`).join('\n\n')
-  return html`<article class="article"><header class="article-header"><div class="lesson-meta">${sharedPath ? html`<span>${lesson.category}</span>` : html`<a href="/?category=${encodeURIComponent(lesson.category)}">${lesson.category}</a>`}<a href="https://github.com/${lesson.repo}">${lesson.repo}</a></div><h1>${lesson.title}</h1><p class="lead">${lesson.summary}</p><div class="article-actions"><a href="${sharedPath || `/lessons/${lesson.slug}`}.md">Read Markdown</a>${sharedPath ? html`<button type="button" data-copy-link>Copy share link</button><span role="status" data-copy-status></span>` : ''}<span class="updated">Updated ${lesson.updatedAt.slice(0, 10)}</span></div>${!sharedPath ? html`<details class="share-controls" data-share-slug="${lesson.slug}"><summary>Share this lesson</summary><p>Anyone with your link can read this lesson only. Creating a new link replaces your previous link for this lesson.</p><div class="article-actions"><button type="button" data-create-share>Create share link</button><button type="button" data-revoke-share>Revoke my share link</button></div><label class="share-result" hidden>Shareable link<input type="text" readonly data-share-url></label><p role="status" data-share-status></p></details>` : ''}${lesson.status === 'superseded' ? html`<p class="notice">This lesson has been superseded.${lesson.supersededBy ? html`<a href="/lessons/${lesson.supersededBy}">Read the current approach →</a>` : ''}</p>` : ''}</header>${lessonDemo(lesson)}<div class="prose">${raw(renderer.render(body))}</div><p class="article-provenance">Based on the linked commits. Verification describes checks to perform, not a claim that tests were executed. Confirm applicability in your own project.</p>${related.length ? html`<section class="related"><h2>Related lessons</h2>${related.map(item => html`<a href="/lessons/${item.slug}">${item.title}<span>→</span></a>`)}</section>` : ''}</article>`
+  return html`<article class="article ${lesson.ui ? 'ui-pattern' : ''}"><header class="article-header"><div class="lesson-meta">${sharedPath ? html`<span>${lesson.ui ? 'UI pattern' : lesson.category}</span>` : html`<a href="${lesson.ui ? '/ui' : '/?category=' + encodeURIComponent(lesson.category)}">${lesson.ui ? 'UI patterns' : lesson.category}</a>`}${lesson.ui ? '' : html`<a href="https://github.com/${lesson.repo}">${lesson.repo}</a>`}</div><h1>${lesson.title}</h1><p class="lead">${lesson.summary}</p><div class="article-actions"><a href="${sharedPath || `/lessons/${lesson.slug}`}.md">Read Markdown</a>${sharedPath ? html`<button type="button" data-copy-link>Copy share link</button><span role="status" data-copy-status></span>` : ''}<span class="updated">Updated ${lesson.updatedAt.slice(0, 10)}</span></div>${!sharedPath ? html`<details class="share-controls" data-share-slug="${lesson.slug}"><summary>Share this ${lesson.ui ? 'pattern' : 'lesson'}</summary><p>Anyone with your link can view this ${lesson.ui ? 'pattern' : 'lesson'} only. Creating a new link replaces your previous link.</p><div class="article-actions"><button type="button" data-create-share>Create share link</button><button type="button" data-revoke-share>Revoke my share link</button></div><label class="share-result" hidden>Shareable link<input type="text" readonly data-share-url></label><p role="status" data-share-status></p></details>` : ''}${lesson.status === 'superseded' ? html`<p class="notice">This lesson has been superseded.${lesson.supersededBy ? html`<a href="/lessons/${lesson.supersededBy}">Read the current approach →</a>` : ''}</p>` : ''}</header>${lesson.ui ? patternContent(lesson) : html`${lessonDemo(lesson)}<div class="prose">${raw(renderer.render(body))}</div><p class="article-provenance">Based on the linked commits. Verification describes checks to perform, not a claim that tests were executed. Confirm applicability in your own project.</p>`}${related.length && !lesson.ui ? html`<section class="related"><h2>Related lessons</h2>${related.map(item => html`<a href="/lessons/${item.slug}">${item.title}<span>→</span></a>`)}</section>` : ''}</article>`
 }
 
 export function searchPage(query: string, lessons: StoredLesson[], mode: string) {

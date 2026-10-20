@@ -25,6 +25,12 @@ document.querySelector('[data-copy-link]')?.addEventListener('click', async () =
   try { await navigator.clipboard.writeText(location.href); status.textContent = 'Link copied'; }
   catch { status.textContent = 'Copy the URL from your address bar'; }
 });
+document.querySelector('[data-copy-prompt]')?.addEventListener('click', async () => {
+  const prompt = document.querySelector('#pattern-prompt');
+  const status = document.querySelector('[data-prompt-status]');
+  try { await navigator.clipboard.writeText(prompt.value); status.textContent = 'Prompt copied'; }
+  catch { prompt.focus(); prompt.select(); status.textContent = 'Prompt selected. Copy it using your keyboard or device menu.'; }
+});
 const sharing = document.querySelector('[data-share-slug]');
 sharing?.addEventListener('click', async event => {
   const create = event.target.closest('[data-create-share]');

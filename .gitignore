@@ -8,3 +8,4 @@ test-results/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 src/generated-template.ts
+.impeccable/review/

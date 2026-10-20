@@ -17,7 +17,7 @@ onMounted(() => { ready.value = true })
           <input id="header-query" name="q" type="search" placeholder="Search notes…" :value="frontmatter.query" maxlength="240" required>
           <button type="submit">Search</button>
         </form>
-        <span v-else class="shared-label">Shared lesson · Access to this page only</span>
+        <span v-else class="shared-label">Shared {{ frontmatter.pattern ? 'pattern' : 'lesson' }} · Access to this page only</span>
       </template>
       <template #nav-bar-content-after>
         <form v-if="!frontmatter.shared" class="notes-signout" action="/auth/logout" method="post"><button type="submit">Sign out</button></form>

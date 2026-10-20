@@ -6,6 +6,7 @@ import { allLessons, commitSha, getLesson, indexLesson, lessonSchema, markdown, 
 import { agentGuide, article, home, prosePage, searchPage, shell, statusPage } from './pages.ts'
 import { github, syncAll, syncSource } from './sync.ts'
 import { access, adminToken, hashToken, newToken, validToken, type AppEnv } from './access.ts'
+import { patternLibrary } from './patterns.ts'
 
 export const app = new Hono<AppEnv>()
 app.use('*', async (c, next) => {
@@ -52,6 +53,11 @@ app.get('/', async c => {
   const lessons = await allLessons(c.env)
   const origin = c.env.SITE_URL || new URL(c.req.url).origin
   return c.html(shell('Lessons from real fixes', 'Engineering lessons from real repository fixes, with semantic search and agent-readable Markdown.', home(lessons, c.req.query('category'), c.req.query('repo')), '/', origin, '', false, lessons))
+})
+
+app.get('/ui', async c => {
+  const lessons = await allLessons(c.env)
+  return c.html(shell('UI patterns', 'Interactive UI samples, sources and reusable prompts.', patternLibrary(lessons), '/ui', c.env.SITE_URL || new URL(c.req.url).origin, '', false, lessons))
 })
 
 app.get('/lessons/:slug', async c => {

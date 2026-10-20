@@ -10,6 +10,12 @@ The interface runs VitePress 1.6.4 with its default documentation theme, topic s
 
 Every lesson has a **Try it** section. The seven current topics have interactive problem/fix illustrations with reset controls, visible state, and keyboard/touch controls. These use sample data and simulated timing; they do not execute terminal commands, send notifications, or reproduce native iPhone behavior. Shared article links include the same example. New topics automatically get a step-by-step reveal exercise using their current D1 diagnosis, previous approach, improvement, and verification. Add a reviewed component under `docs/.vitepress/theme/demos/` and a mapping in `src/demos.ts` for a custom illustration. Stored article text is never compiled or executed as demo code.
 
+## UI patterns
+
+`/ui` lists visual patterns separately from engineering lessons. A document with an optional `ui` field gets a sample-first layout containing an interactive preview, a copyable prompt and source links. Its existing slug, authentication, sharing and revision history remain intact. Markdown exposes the sources and prompt without forcing a problem/fix format.
+
+The `ui` object contains `sources` (HTTPS URLs, labels and provenance notes), `prompt`, and a reviewed `demo` identifier. The first sample, `monochrome-paper`, lives in `docs/.vitepress/theme/patterns/MonochromePaper.vue`. It uses fictional content and local state, including an access-code example and a draggable paper reveal. Source and prompt text stay in D1; stored documents cannot supply executable HTML or JavaScript. Register further sample identifiers in the schema and provide a reviewed component before publishing them. Copying a prompt falls back to selecting the text when clipboard access is unavailable.
+
 ## Editorial format
 
 Lead with the problem a reader can recognize in another project. For example, "When a button feels slow: trace the wait" introduces a terminal-start incident without making terminal startup the entire lesson. Keep concrete implementation terms in the case and search tags.

@@ -3,6 +3,8 @@ import DefaultTheme from 'vitepress/theme'
 import Layout from './Layout.vue'
 import { bindNotesInteractions } from './interactions.js'
 import LessonDemo from './demos/LessonDemo.vue'
+import MonochromePaper from './patterns/MonochromePaper.vue'
+import './patterns/patterns.css'
 import './custom.css'
 
 export default {
@@ -19,7 +21,7 @@ export default {
       themeConfig: {
         ...siteData.value.themeConfig,
         logoLink: page.shared ? page.path : '/',
-        nav: page.shared ? [] : [{ text: 'All lessons', link: '/' }, { text: 'For agents', link: '/agents' }, { text: 'Updates', link: '/status' }],
+        nav: page.shared ? [] : [{ text: 'All lessons', link: '/' }, { text: 'UI patterns', link: '/ui' }, { text: 'For agents', link: '/agents' }, { text: 'Updates', link: '/status' }],
         sidebar: page.sidebar,
       },
     }
@@ -39,7 +41,7 @@ export default {
         description: page.description,
         relativePath: (page.path === '/' ? '/index' : page.path).slice(1) + '.md',
         filePath: '', headers: [],
-        frontmatter: { shared: page.shared, query: page.query, sidebar: !page.shared, aside: page.article, outline: page.article ? 2 : false, prev: false, next: false },
+        frontmatter: { shared: page.shared, pattern: page.pattern, query: page.query, sidebar: !page.shared, aside: page.article && !page.pattern, outline: page.article && !page.pattern ? 2 : false, prev: false, next: false },
       }
       router.route.component = markRaw(defineComponent({
         setup() {
@@ -50,6 +52,11 @@ export default {
             if (target) {
               demo = createApp(LessonDemo, { kind: target.dataset.lessonDemo })
               demo.mount(target)
+            }
+            const pattern = document.querySelector('[data-ui-demo="monochrome-paper"]')
+            if (pattern) {
+              demo = createApp(MonochromePaper)
+              demo.mount(pattern)
             }
             if (location.hash) requestAnimationFrame(() => {
               try { document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView() } catch { /* An invalid fragment has no target. */ }
