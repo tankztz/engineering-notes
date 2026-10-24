@@ -134,7 +134,7 @@ app.get('/sitemap.xml', async c => {
   const paths = ['/', '/agents', ...(await allLessons(c.env)).filter(lesson => lesson.status === 'active').map(lesson => `/lessons/${lesson.slug}`)]
   return c.body(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(path => `<url><loc>${origin}${path}</loc></url>`).join('')}</urlset>`, 200, { 'Content-Type': 'application/xml' })
 })
-app.get('/robots.txt', c => c.text('User-agent: *\nDisallow: /\n'))
+app.get('/robots.txt', c => c.text('User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /share/\nDisallow: /api/admin/\nDisallow: /status\n'))
 app.get('/health', async c => c.json({ ok: true, lessons: (await c.env.DB.prepare('SELECT count(*) AS count FROM lessons').first<{ count: number }>())?.count ?? 0 }))
 
 app.put('/api/admin/sources', async c => {

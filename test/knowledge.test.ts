@@ -88,6 +88,43 @@ test('published HTML, Markdown, agent discovery, search and failure paths work a
   } finally { sqlite.close() }
 })
 
+test('anonymous readers can browse, search and export without the login service', async t => {
+  const { sqlite, DB } = database()
+  const env = environment(DB)
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('Login service must not be called for public reading') })
+  try {
+    await saveLessons(env, seeds)
+    const paths = ['/', '/ui', '/search?q=hover', '/api/search?q=hover', '/api/index.json', '/api/export', '/llms.txt', '/llms-full.txt', '/agents', '/agents.md', '/openapi.json', '/sitemap.xml', '/health', `/lessons/${sample.slug}`, `/lessons/${sample.slug}.md`]
+    for (const path of paths) {
+      for (const headers of [new Headers(), new Headers({ cookie: `__Host-notes-session=${'x'.repeat(43)}` })]) {
+        const response = await app.request(path, { headers }, env)
+        assert.equal(response.status, 200, path)
+        assert.equal(response.headers.get('location'), null, path)
+        assert.equal(response.headers.get('x-robots-tag'), null, path)
+      }
+    }
+    const md = await app.request(`/lessons/${sample.slug}`, { headers: { accept: 'text/markdown' } }, env)
+    assert.equal(await md.text(), markdown(sample))
+    const head = await app.request(`/lessons/${sample.slug}`, { method: 'HEAD' }, env)
+    assert.equal(head.status, 200)
+    assert.equal(await head.text(), '')
+    for (const [path, method] of [['/api/admin/lessons', 'PUT'], ['/api/admin/sync', 'POST'], ['/api/admin/reindex', 'POST'], ['/api/admin/sources', 'PUT'], ['/api/admin/status', 'GET'], [`/api/lessons/${sample.slug}/share`, 'POST'], [`/api/lessons/${sample.slug}/share`, 'DELETE']]) {
+      assert.equal((await app.request(path, { method, headers: { origin: 'http://localhost' } }, env)).status, 401, path)
+    }
+    assert.equal((await app.request('/status', {}, env)).status, 302)
+    assert.equal((await app.request('/api/export', { method: 'POST' }, env)).status, 401)
+    const robots = await (await app.request('/robots.txt', {}, env)).text()
+    assert.match(robots, /Allow: \/\n/)
+    assert.match(robots, /Disallow: \/api\/admin\//)
+    assert.doesNotMatch(robots, /Disallow: \/\n/)
+    const guide = await (await app.request('/agents.md', {}, env)).text()
+    assert.match(guide, /No login or token is needed to read/)
+    const article = await (await app.request(`/lessons/${sample.slug}`, {}, env)).text()
+    assert.match(article, /Copy link/)
+    assert.doesNotMatch(article, /data-share-slug|data-create-share/)
+  } finally { sqlite.close() }
+})
+
 test('VitePress receives current D1 content as inert page data, with no lessons in static assets', async () => {
   const { sqlite, DB } = database()
   const env = environment(DB)
@@ -133,7 +170,8 @@ test('every curated example is served only inside its article and new topics get
       assert.equal((page.content.match(/data-lesson-demo=/g) ?? []).length, 1)
       assert.ok(page.content.includes('not a replay or benchmark'))
       const guest = await app.request(`/lessons/${slug}`, {}, env)
-      assert.doesNotMatch(await guest.text(), /data-lesson-demo/)
+      assert.equal(guest.status, 200)
+      assert.match(await guest.text(), /data-lesson-demo/)
     }
     const added = { ...sample, slug: 'new-topic', cause: '<script>alert(1)</script>', solution: 'New solution from current D1.' }
     await saveLessons(env, [added])
@@ -194,7 +232,7 @@ test('UI patterns retain structured prompts, safe sources, curated samples and r
     assert.doesNotMatch(md, /## What happened/)
     const gallery = pageData(await (await app.request('/ui', { headers }, env)).text())
     assert.match(gallery.content, /A reusable UI/)
-    assert.equal((await app.request('/ui', {}, env)).status, 302)
+    assert.equal((await app.request('/ui', {}, env)).status, 200)
     assert.equal((await searchLessons(env, 'Impeccable')).results[0].slug, pattern.slug)
     const response = await app.request(`/api/lessons/${pattern.slug}/share`, { method: 'POST', headers }, env)
     assert.equal(response.status, 201)
@@ -211,7 +249,7 @@ test('UI patterns retain structured prompts, safe sources, curated samples and r
   } finally { sqlite.close() }
 })
 
-test('SyntaxSkills login gates every collection route and share links grant only one revocable article', async t => {
+test('SyntaxSkills login protects operational status and legacy share management', async t => {
   const { sqlite, DB } = database()
   const env = environment(DB)
   const origin = 'https://notes.example.com'
@@ -230,7 +268,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
   })
   const signed = { cookie: `__Host-notes-session=${token}`, origin }
   const request = (path: string, init: RequestInit = {}) => app.request(origin + path, init, env)
-  const privatePaths = ['/', '/search?q=hover', '/api/search?q=hover', '/api/index.json', '/api/export', '/llms.txt', '/llms-full.txt', '/agents', '/agents.md', '/openapi.json', '/status', '/sitemap.xml', '/health', `/lessons/${sample.slug}`, `/lessons/${sample.slug}.md`]
+  const privatePaths = ['/status']
   try {
     await saveLessons(env, seeds)
     for (const path of privatePaths) {
@@ -240,7 +278,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
       assert.ok(!(await response.text()).includes(sample.title), path)
     }
     assert.equal((await request(`/api/lessons/${sample.slug}/share`, { method: 'POST' })).status, 401)
-    assert.equal((await request('/api/export', { headers: { cookie: '__Host-notes-session=forged' } })).status, 401)
+    assert.equal((await request('/api/export', { headers: { cookie: '__Host-notes-session=forged' } })).status, 200)
     env.SITE_URL = origin
     const legacy = await app.request(`https://engineering-notes.tankztz.workers.dev/lessons/${sample.slug}`, {}, env)
     assert.equal(legacy.status, 308)
@@ -299,7 +337,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
     assert.equal(await (await request(shared.pathname, { headers: { accept: 'text/markdown' } })).text(), markdown(sample))
     assert.equal(authCalls, callsBeforeShare)
     const otherSlug = seeds.find(lesson => lesson.slug !== sample.slug)!.slug
-    for (const path of [...privatePaths, `/lessons/${otherSlug}`, `/lessons/${otherSlug}.md`]) {
+    for (const path of [...privatePaths, '/api/admin/status']) {
       const separator = path.includes('?') ? '&' : '?'
       const response = await request(`${path}${separator}share=${shareToken}`, { headers: { authorization: `Bearer ${shareToken}`, cookie: `__Host-notes-session=${shareToken}` } })
       assert.ok([302, 401].includes(response.status), path)
@@ -316,7 +354,7 @@ test('SyntaxSkills login gates every collection route and share links grant only
     assert.equal((await request(rotated.pathname)).status, 404)
     assert.equal((await request(rotated.pathname + '.md')).status, 404)
     userId = null
-    assert.equal((await request('/api/export', { headers: signed })).status, 401)
+    assert.equal((await request(sharePath, { method: 'DELETE', headers: signed })).status, 401)
     assert.equal(sqlite.prepare('SELECT token_hash FROM web_sessions WHERE token_hash = ?').get(hashToken(token)), undefined)
     assert.equal((await request('/auth/logout', { method: 'POST', headers: { origin: 'https://evil.example' } })).status, 403)
     assert.equal((await request('/auth/logout', { method: 'POST', headers: signed })).status, 303)

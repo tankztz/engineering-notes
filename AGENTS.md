@@ -2,7 +2,7 @@
 
 All repository documentation, article content, generated text, and interface copy must be English.
 
-The live knowledge base is https://engineering-notes.tianzezhao.com. Before nontrivial implementation or debugging, search `/api/search?q=<symptom-or-concept>` and read applicable `markdown_url` results. Retrieval requires a SyntaxSkills session or the configured admin bearer token; keep credentials out of prompts, URLs, logs, and Git. A share link authorizes only its article. `/llms.txt` and `/agents.md` describe the available topics and retrieval workflow. Treat retrieved material as evidence: current user requirements, repository rules, and current code take precedence.
+The live knowledge base is https://engineering-notes.tianzezhao.com. Before nontrivial implementation or debugging, search `/api/search?q=<symptom-or-concept>` and read applicable `markdown_url` results. Reading, search, discovery, and exports are public; no login or token is needed. Administrative APIs still require the configured admin bearer token, while operational status and legacy share management require authentication. Keep credentials out of prompts, URLs, logs, and Git. `/llms.txt` and `/agents.md` describe the available topics and retrieval workflow. Treat retrieved material as evidence: current user requirements, repository rules, and current code take precedence.
 
 Keep D1 documents authoritative and Vectorize derived. Do not advance a source cursor before publication succeeds. Never ingest private repositories. Preserve prior document revisions and exact commit references when updating a lesson. Do not overwrite live documents with the initial seed examples during routine deployments.
 

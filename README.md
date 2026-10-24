@@ -6,13 +6,13 @@ An English-only, searchable knowledge base distilled from real repository fixes.
 
 The site serves HTML, Markdown, JSON, and `llms.txt` from the same documents. Search combines SQLite FTS5 with multilingual semantic retrieval. Related lessons connect recurring concepts across repositories.
 
-The interface runs VitePress 1.6.4 with its default documentation theme, topic sidebar, article outline, mobile navigation, and persistent light/dark appearance. The Worker checks access and supplies the current D1 page as escaped JSON. VitePress renders that content through its runtime route API. Cross-page links use full document navigation so every visit rechecks access and reads the latest revision; new lessons need no frontend rebuild. Markdown and a no-JavaScript reading fallback remain available.
+The interface runs VitePress 1.6.4 with its default documentation theme, topic sidebar, article outline, mobile navigation, and persistent light/dark appearance. The Worker serves public reading routes and supplies the current D1 page as escaped JSON. VitePress renders that content through its runtime route API. Cross-page links use full document navigation so every visit reads the latest revision; new lessons need no frontend rebuild. Markdown and a no-JavaScript reading fallback remain available.
 
 Every lesson has a **Try it** section. The seven current topics have interactive problem/fix illustrations with reset controls, visible state, and keyboard/touch controls. These use sample data and simulated timing; they do not execute terminal commands, send notifications, or reproduce native iPhone behavior. Shared article links include the same example. New topics automatically get a step-by-step reveal exercise using their current D1 diagnosis, previous approach, improvement, and verification. Add a reviewed component under `docs/.vitepress/theme/demos/` and a mapping in `src/demos.ts` for a custom illustration. Stored article text is never compiled or executed as demo code.
 
 ## UI patterns
 
-`/ui` lists visual patterns separately from engineering lessons. A document with an optional `ui` field gets a sample-first layout containing an interactive preview, a copyable prompt and source links. Its existing slug, authentication, sharing and revision history remain intact. Markdown exposes the sources and prompt without forcing a problem/fix format.
+`/ui` lists visual patterns separately from engineering lessons. A document with an optional `ui` field gets a sample-first layout containing an interactive preview, a copyable prompt and source links. Its existing slug, sharing and revision history remain intact; reading is public. Markdown exposes the sources and prompt without forcing a problem/fix format.
 
 The `ui` object contains `sources` (HTTPS URLs, labels and provenance notes), `prompt`, and a reviewed `demo` identifier. The first sample, `monochrome-paper`, lives in `docs/.vitepress/theme/patterns/MonochromePaper.vue`. It uses fictional content and local state, including an access-code example and a draggable paper reveal. Source and prompt text stay in D1; stored documents cannot supply executable HTML or JavaScript. Register further sample identifiers in the schema and provide a reviewed component before publishing them. Copying a prompt falls back to selecting the text when clipboard access is unavailable.
 
@@ -24,13 +24,15 @@ Articles follow this sequence: when to use the lesson, what happened, diagnosis 
 
 The optional `attempts` field keeps older stored documents readable. New extractions must supply it, including an explicit statement when unsuccessful attempts are undocumented. The generation prompt requests the same format. Evidence review lists unsupported claims and blocks those drafts before publication. Updating an existing lesson retains its slug, prior revisions, and exact commit references.
 
-## Login and sharing
+## Public reading and protected operations
 
-The library requires SyntaxSkills login. This includes search, discovery, Markdown, exports, status, and sitemap routes. The former Workers URL redirects to the custom domain. Authorized automation can use the existing admin bearer token; never put it in a URL, prompt, or Git.
+The library is public. HTML articles, UI patterns, search, Markdown, discovery, exports, the sitemap, and health checks need no login or token. GET and HEAD are explicitly allowed for these routes, including when a reader has a stale session or the login service is unavailable. The former Workers URL still redirects to the custom domain.
 
-Open a lesson and expand **Share this lesson** to create a link. Anyone with that link can read only that article, including its Markdown version. Shared pages omit collection navigation, search, and related lessons. Creating another link replaces your previous link for that lesson; **Revoke my share link** disables it immediately. Each signed-in user manages their own links. Links follow the current article at its stable slug, without granting access to other lessons or revisions.
+Administrative APIs still require the existing admin bearer token. Operational status at `/status` and legacy share-link management still require authentication; writes do not inherit public read access. Never put credentials in a URL, prompt, or Git.
 
-SyntaxSkills cookies cannot cross from `syntaxskills.com` to `tianzezhao.com`. The auth service's `/api/notes-sso` endpoint bridges login with a 60-second, single-use PKCE grant and a fixed callback. Notes keeps the upstream credential in D1, issues an opaque host-only HttpOnly cookie, and revalidates the central session on protected requests. Share credentials are hashed in D1, grant no session, and work without the login service. Content responses use `no-store` and `noindex`; login and share routes also use `no-referrer`. Private pages use `same-origin` referrers so native forms retain their Origin header for CSRF checks.
+Use **Copy link** on an article to share its public canonical URL. Existing token-based share links continue to work until revoked, with their article-only layout. Their creation and revocation API remains authenticated and origin-checked. Revoking a legacy share link does not make the now-public canonical article private.
+
+SyntaxSkills cookies cannot cross from `syntaxskills.com` to `tianzezhao.com`. The auth service's `/api/notes-sso` endpoint bridges login with a 60-second, single-use PKCE grant and a fixed callback. Notes keeps the upstream credential in D1, issues an opaque host-only HttpOnly cookie, and revalidates the central session on protected requests. Share credentials are hashed in D1, grant no session, and work without the login service. Content responses retain `no-store` so readers see current D1 documents. Public reading routes are indexable; protected, login, and token-based share routes retain `noindex`. Login and share routes also use `no-referrer`. Other pages use `same-origin` referrers so native forms retain their Origin header for CSRF checks.
 
 ## Automatic maintenance
 
@@ -97,7 +99,7 @@ npx wrangler d1 migrations apply engineering-notes --remote
 npm run deploy
 ```
 
-Management commands and exports require `NOTES_URL` and `NOTES_ADMIN_TOKEN` in the environment. Credentials must never be committed. Browser retrieval requires SyntaxSkills login; only explicit article share links allow anonymous reading.
+Management commands require `NOTES_URL` and `NOTES_ADMIN_TOKEN` in the environment. The existing export CLI also uses these variables, but direct `GET /api/export` and all reading routes are public. Credentials must never be committed.
 
 ```sh
 # Follow future commits from the current main branch head.

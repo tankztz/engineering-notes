@@ -12,6 +12,7 @@ const authOrigin = 'https://auth.syntaxskills.com'
 const cookieOptions = { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' as const }
 const sessionCookie = '__Host-notes-session'
 const loginCookie = '__Host-notes-login'
+const publicReadPaths = new Set(['/', '/ui', '/search', '/api/search', '/api/index.json', '/api/export', '/llms.txt', '/llms-full.txt', '/agents', '/agents.md', '/openapi.json', '/sitemap.xml', '/health'])
 
 function returnPath(value = '/') {
   try {
@@ -29,15 +30,19 @@ export function adminToken(request: Request, env: Env) {
 export const access = new Hono<AppEnv>()
 access.use('*', async (c, next) => {
   const path = c.req.path
+  const publicRead = ['GET', 'HEAD'].includes(c.req.method) && (publicReadPaths.has(path) || /^\/lessons\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\.md)?$/.test(path))
   c.header('Cache-Control', 'private, no-store')
   // Native form POSTs need a same-origin referrer policy to preserve their Origin header.
   c.header('Referrer-Policy', path.startsWith('/share/') || path.startsWith('/auth/') ? 'no-referrer' : 'same-origin')
-  c.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
+  if (!publicRead) c.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
   const url = new URL(c.req.url)
   if (c.env.SITE_URL && url.origin !== c.env.SITE_URL && !['localhost', '127.0.0.1'].includes(url.hostname)) {
     return c.redirect(c.env.SITE_URL + url.pathname + url.search, 308)
   }
   if (path.startsWith('/assets/') || ['/favicon.svg', '/vp-icons.css', '/robots.txt'].includes(path) || path.startsWith('/auth/') || path.startsWith('/share/') || path.startsWith('/api/admin/')) return next()
+  // Public reading must work even with a stale cookie or an unavailable login service.
+  // Only these read routes bypass login; mutations and operational status stay protected.
+  if (publicRead) return next()
   if (adminToken(c.req.raw, c.env)) {
     c.set('isAdmin', true)
     c.set('userId', 'admin')

@@ -19,12 +19,6 @@ onMounted(() => { ready.value = true })
         </form>
         <span v-else class="shared-label">Shared {{ frontmatter.pattern ? 'pattern' : 'lesson' }} · Access to this page only</span>
       </template>
-      <template #nav-bar-content-after>
-        <form v-if="!frontmatter.shared" class="notes-signout" action="/auth/logout" method="post"><button type="submit">Sign out</button></form>
-      </template>
-      <template #nav-screen-content-after>
-        <form v-if="!frontmatter.shared" class="notes-mobile-signout" action="/auth/logout" method="post"><button type="submit">Sign out</button></form>
-      </template>
       <template #doc-after>
         <footer class="notes-footer">
           <span>Engineering Notes · Powered by <a href="https://vitepress.dev/">VitePress</a></span>
